@@ -1,10 +1,13 @@
+python -m pip install --upgrade numba pandas-ta numba
+fastapi
+uvicorn
 langgraph
 langchain
 langchain-openai
-langchain-community
 pandas
 yfinance
 pandas_ta
 python-telegram-bot
 python-dotenv
 pytz
+APScheduler
