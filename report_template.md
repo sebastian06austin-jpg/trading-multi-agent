@@ -1,6 +1,6 @@
 # Trading Education Report — {{date}} IST
 
-**DISCLAIMER: This is 100% educational and hypothetical. Virtual portfolio only (₹1,00,000 fake capital). Past performance does not predict future results. Not financial advice. Consult a SEBI-registered advisor.**
+**DISCLAIMER: 100% educational & hypothetical. Virtual ₹1L portfolio only. Not financial advice. Past performance ≠ future. Consult SEBI-registered advisor.**
 
 ## Market Overview
 ...
@@ -14,14 +14,11 @@
 ## Options Ideas
 ...
 
-## Virtual Portfolio & Risk Sizing
+## Virtual Portfolio & Risk Sizing (1-2% rule)
 ...
 
 ## Educational Section
 ...
 
-## Self-Critique & Confidence
-Confidence: X/10  
-...
-
-**Next report: 8 PM IST | Virtual capital updated automatically**
+## Self-Critique & Confidence: X/10
+**Next report in 10 hours**
