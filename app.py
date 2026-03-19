@@ -32,9 +32,10 @@ async def call_grok(prompt: str):
     
     response = client.chat.completions.create(
         model="grok-4.1-fast",
-        messages=[{"role": "system", "content": system_prompt},
-                  {"role": "user", "content": prompt}],
-        tools=[{"type": "mcp", "mcp": {"server_url": MCP_URL}}],
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt}
+        ],
         temperature=0.1
     )
     return response.choices[0].message.content
