@@ -50,24 +50,17 @@ async def real_time_check():
     if "STRONG BUY" in report.upper() or "STRONG SELL" in report.upper():
         await send_alert("🚨 LIVE HIGH-CONFIDENCE SIGNAL!")
 
-@app.get("/test")
-async def simple_test():
-    import os
+@app.get("/trigger-report")
+async def trigger_report():
     try:
-        mcp_url = os.getenv("MCP_URL", "❌ NOT_SET — ADD THIS IN RENDER!")
-        xai_key = "✅ SET" if os.getenv("XAI_API_KEY") else "❌ NOT_SET"
-        telegram = "✅ SET" if os.getenv("TELEGRAM_TOKEN") else "❌ NOT_SET"
-        
-        return {
-            "status": "app_running",
-            "message": "✅ App is alive on Render!",
-            "MCP_URL": mcp_url,
-            "XAI_API_KEY": xai_key,
-            "TELEGRAM_TOKEN": telegram,
-            "time": datetime.now(pytz.timezone("Asia/Kolkata")).strftime("%Y-%m-%d %H:%M IST")
-        }
+        print("🚀 Manual report triggered at", datetime.now(pytz.timezone("Asia/Kolkata")).strftime("%Y-%m-%d %H:%M IST"))
+        await full_report()          # This runs the full Grok + MCP + Telegram
+        return {"status": "✅ SUCCESS! Full report sent to your Telegram. Check now!"}
     except Exception as e:
-        return {"status": "error", "detail": str(e)}
+        import traceback
+        error_msg = traceback.format_exc()
+        print("❌ ERROR:", error_msg)
+        return {"status": "❌ Error occurred", "detail": str(e), "traceback": error_msg}
     
 if __name__ == "__main__":
     import uvicorn
