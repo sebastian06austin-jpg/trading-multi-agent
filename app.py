@@ -50,6 +50,12 @@ async def real_time_check():
     if "STRONG BUY" in report.upper() or "STRONG SELL" in report.upper():
         await send_alert("🚨 LIVE HIGH-CONFIDENCE SIGNAL!")
 
+@app.get("/test")
+async def test_report():
+    print("🧪 Manual test report triggered")
+    await full_report()
+    return {"status": "Report sent to Telegram! Check now."}
+    
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
