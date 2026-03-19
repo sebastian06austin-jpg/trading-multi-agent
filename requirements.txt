@@ -1,4 +1,4 @@
-python -m pip install --upgrade numba pandas-ta numba
+numba
 fastapi
 uvicorn
 openai
