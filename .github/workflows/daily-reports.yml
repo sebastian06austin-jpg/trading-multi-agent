@@ -1,0 +1,22 @@
+name: Twice Daily Trading Reports
+on:
+  schedule:
+    - cron: '30 2 * * *'   # 8:00 AM IST
+    - cron: '30 12 * * *'  # 6:00 PM IST
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - run: python main.py
+        env:
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      - uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Update portfolio.json after report"
