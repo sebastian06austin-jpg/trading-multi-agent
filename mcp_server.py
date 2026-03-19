@@ -3,6 +3,7 @@ import json, os, yfinance as yf
 from datetime import datetime
 import pytz
 import asyncio   # ← REQUIRED for latest API
+from starlette.responses import JSONResponse   # ← NEW
 
 mcp = FastMCP("trading-mcp")   # ← NO host here (this was causing the error)
 
@@ -63,6 +64,15 @@ def get_portfolio() -> str:
 def calculate_risk_metrics() -> str:
     """Risk metrics (1-2% rule enforced by supervisor)"""
     return "1-2% risk rule + Kelly/ATR sizing active"
+
+# === TINY HEALTH ENDPOINT (fixes "output too large") ===
+@mcp.custom_route("/health", methods=["GET"])
+async def health_check(request):
+    return JSONResponse({
+        "status": "mcp_healthy",
+        "service": "trading-mcp",
+        "time": datetime.now(pytz.timezone("Asia/Kolkata")).isoformat()
+    })
 
 # === RENDER + LATEST FASTMCP STARTUP ===
 async def main():
