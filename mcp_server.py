@@ -61,5 +61,7 @@ def calculate_risk_metrics() -> str:
     return "1-2% risk rule + Kelly/ATR sizing active"
 
 if __name__ == "__main__":
-    print("🚀 MCP Server running on Render...")
-    mcp.run(host="0.0.0.0", port=8000)
+    import os
+    port = int(os.getenv("PORT", 8000))
+    print(f"🚀 MCP Server starting on Render (port {port})...")
+    mcp.run(host="0.0.0.0", port=port)
