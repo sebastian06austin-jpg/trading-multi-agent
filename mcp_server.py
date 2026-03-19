@@ -2,9 +2,9 @@ from fastmcp import FastMCP
 import json, os, yfinance as yf
 from datetime import datetime
 import pytz
+import asyncio   # ← REQUIRED for latest API
 
-# === FIXED FOR RENDER: host goes here ===
-mcp = FastMCP("trading-mcp", host="0.0.0.0")
+mcp = FastMCP("trading-mcp")   # ← NO host here (this was causing the error)
 
 @mcp.tool()
 def get_nse_data(ticker: str, period: str = "1d") -> str:
@@ -64,11 +64,15 @@ def calculate_risk_metrics() -> str:
     """Risk metrics (1-2% rule enforced by supervisor)"""
     return "1-2% risk rule + Kelly/ATR sizing active"
 
-# === RENDER PORT BINDING (MUST USE THIS) ===
-if __name__ == "__main__":
+# === RENDER + LATEST FASTMCP STARTUP ===
+async def main():
     port = int(os.getenv("PORT", 8000))
-    print(f"🚀 MCP Server starting on Render → http://0.0.0.0:{port} (transport=http)")
-    mcp.run(
-        transport="http",      # forces HTTP (no stdio fallback)
-        port=port              # NO 'host' here — that's why it was failing
+    print(f"🚀 MCP Server starting on Render → http://0.0.0.0:{port}")
+    await mcp.run_http_async(
+        transport="http",
+        host="0.0.0.0",
+        port=port
     )
+
+if __name__ == "__main__":
+    asyncio.run(main())
