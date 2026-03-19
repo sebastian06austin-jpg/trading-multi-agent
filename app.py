@@ -51,10 +51,23 @@ async def real_time_check():
         await send_alert("🚨 LIVE HIGH-CONFIDENCE SIGNAL!")
 
 @app.get("/test")
-async def test_report():
-    print("🧪 Manual test report triggered")
-    await full_report()
-    return {"status": "Report sent to Telegram! Check now."}
+async def simple_test():
+    import os
+    try:
+        mcp_url = os.getenv("MCP_URL", "❌ NOT_SET — ADD THIS IN RENDER!")
+        xai_key = "✅ SET" if os.getenv("XAI_API_KEY") else "❌ NOT_SET"
+        telegram = "✅ SET" if os.getenv("TELEGRAM_TOKEN") else "❌ NOT_SET"
+        
+        return {
+            "status": "app_running",
+            "message": "✅ App is alive on Render!",
+            "MCP_URL": mcp_url,
+            "XAI_API_KEY": xai_key,
+            "TELEGRAM_TOKEN": telegram,
+            "time": datetime.now(pytz.timezone("Asia/Kolkata")).strftime("%Y-%m-%d %H:%M IST")
+        }
+    except Exception as e:
+        return {"status": "error", "detail": str(e)}
     
 if __name__ == "__main__":
     import uvicorn
