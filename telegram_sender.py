@@ -7,4 +7,4 @@ async def send_report(md: str):
     await bot.send_message(chat_id=os.getenv("TELEGRAM_CHAT_ID"), text=md, parse_mode="MarkdownV2")
 
 def send_alert(text: str):
-    asyncio.run(send_report(f"🚨 ALERT: {text}"))
+    asyncio.run(send_report(f"🚨 {text}"))
