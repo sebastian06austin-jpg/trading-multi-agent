@@ -46,10 +46,17 @@ async def full_report():
     await send_report(report)
 
 async def real_time_check():
-    prompt = f"Quick real-time scan at {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%Y-%m-%d %H:%M IST')}. Alert if STRONG signal."
-    report = await call_grok(prompt)
-    if "STRONG BUY" in report.upper() or "STRONG SELL" in report.upper():
-        await send_alert("🚨 LIVE HIGH-CONFIDENCE SIGNAL!")
+    prompt = f"""
+    Quick real-time scan at {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%Y-%m-%d %H:%M IST')}.
+    If there is ANY strong buy/sell signal on Nifty, any stock, or IPO grey-market buzz:
+        Return ONLY ONE short line like this:
+        🚨 STRONG BUY RELIANCE.NS @ ₹2850 - Reason: breakout above resistance + high volume
+    If no strong signal, return exactly: NO SIGNAL
+    """
+    alert_text = await call_grok(prompt)
+    
+    if "STRONG" in alert_text.upper() and "NO SIGNAL" not in alert_text.upper():
+        await send_alert(alert_text)   # Now it shows stock, price, reason!
 
 @app.get("/trigger-report")
 async def trigger_report():
