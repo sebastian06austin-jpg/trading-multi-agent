@@ -31,7 +31,7 @@ async def call_grok(prompt: str):
         system_prompt = f.read()
     
     response = client.chat.completions.create(
-        model="grok-4-1-fast-non-reasoning",
+        model="grok-4-1-fast-reasoning",
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt}
