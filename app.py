@@ -13,8 +13,8 @@ MCP_URL = os.getenv("MCP_URL")  # Set in Render env vars
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
-    scheduler.add_job(full_report, 'cron', hour=2, minute=30)   # 8 AM IST
-    scheduler.add_job(full_report, 'cron', hour=6, minute=30)  # 6 PM IST
+    scheduler.add_job(full_report, 'cron', hour=9, minute=00)   # 8 AM IST
+    scheduler.add_job(full_report, 'cron', hour=18, minute=00)  # 6 PM IST
     scheduler.add_job(real_time_check, 'interval', minutes=10)
     scheduler.start()
     print("🚀 24/7 MCP Multi-Agent System LIVE")
