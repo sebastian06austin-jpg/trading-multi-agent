@@ -5,6 +5,9 @@ import asyncio, json, os, io
 from datetime import datetime
 import pytz
 from openai import OpenAI
+import matplotlib
+matplotlib.use('Agg')   # ← THIS FIXES THE INTERNAL SERVER ERROR
+import io
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 from telegram_sender import send_report, send_alert, send_chart_image
