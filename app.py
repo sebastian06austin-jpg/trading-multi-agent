@@ -1,6 +1,5 @@
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import asyncio, json, os, io
 from datetime import datetime
 import pytz
@@ -15,16 +14,7 @@ GROK_MODEL = os.getenv("GROK_MODEL", "grok-4.20-multi-agent-0309")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    try:
-        scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
-        scheduler.add_job(full_report, 'cron', hour=2, minute=30)
-        scheduler.add_job(full_report, 'cron', hour=12, minute=30)
-        scheduler.add_job(real_time_check, 'interval', minutes=10)
-        scheduler.add_job(sunday_self_review, 'cron', day_of_week='sun', hour=9, minute=0)
-        scheduler.start()
-        print("🚀 ULTIMATE MULTI-AGENT SYSTEM STARTED SUCCESSFULLY")
-    except Exception as e:
-        print("Scheduler warning:", e)
+    print("🚀 ULTIMATE SYSTEM STARTED SUCCESSFULLY ON RENDER")
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -36,39 +26,49 @@ async def health():
 @app.get("/trigger-report")
 async def trigger_report():
     await full_report()
-    return {"status": "✅ SUCCESS! Full ultimate report sent"}
-
-async def call_agent(agent: str, prompt: str):
-    with open(f"agents/{agent}_prompt.md") as f:
-        system = f.read()
-    resp = client.chat.completions.create(
-        model=GROK_MODEL,
-        messages=[{"role": "system", "content": system}, {"role": "user", "content": prompt}],
-        temperature=0.1
-    )
-    return resp.choices[0].message.content
+    return {"status": "✅ SUCCESS! Ultimate report + chart + lesson sent to Telegram"}
 
 async def full_report():
-    base_prompt = f"Full analysis at {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%Y-%m-%d %H:%M IST')}. Indian + global focus."
+    base_prompt = f"""
+    You are the Ultimate Multi-Agent Trading System (Chief Strategist + Quant + Technical + Sentiment + Risk + Options + Educator Agent).
+    Time: {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%Y-%m-%d %H:%M IST')}
+    Focus: Indian market (NSE) + global. Small/mid/large cap. Use Dhan app for execution.
 
-    quant = await call_agent("quant", base_prompt)
-    technical = await call_agent("technical", base_prompt)
-    sentiment = await call_agent("sentiment", base_prompt)
-    risk = await call_agent("risk", base_prompt)
-    options = await call_agent("options", base_prompt)
-    educator = await call_agent("educator", base_prompt)
+    Structure the report EXACTLY like this:
 
-    with open("agents/supervisor_prompt.md") as f:
-        sup = f.read()
-    final_prompt = f"{sup}\n\nAgent Outputs:\nQuant: {quant}\nTechnical: {technical}\nSentiment: {sentiment}\nRisk: {risk}\nOptions: {options}\nEducator: {educator}"
+    **DISCLAIMER**: Educational paper-trading simulation only. Not financial advice. Use at your own risk in Dhan app.
 
-    resp = client.chat.completions.create(model=GROK_MODEL, messages=[{"role": "user", "content": final_prompt}], temperature=0.1)
-    report = resp.choices[0].message.content
+    **STOCKS** (Indian + global)
+    - Company name + key info
+    - Method & indicators to use
+    - When to buy/sell/hold (long/short)
+    - Quantity & capital allocation (max 1-2% risk)
+    - TradingView link + Dhan note
 
-    # Chart
+    **COMMODITIES**
+
+    **ETFs**
+
+    **CRYPTO**
+
+    **EDUCATOR LESSON** (long, powerful, detailed teaching on market, psychology, risk, indicators, Dhan usage, etc.)
+
+    **Sunday Self-Review** (if today is Sunday)
+
+    End with Confidence: X/10
+    """
+
+    response = client.chat.completions.create(
+        model=GROK_MODEL,
+        messages=[{"role": "user", "content": base_prompt}],
+        temperature=0.1
+    )
+    report = response.choices[0].message.content
+
+    # Send chart
     try:
-        fig, ax = plt.subplots(figsize=(10,5))
-        ax.plot([1,2,3,4,5], [10,25,15,30,20], marker='o')
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.plot([1,2,3,4,5], [10,25,15,30,20], marker='o', color='blue')
         ax.set_title("Educational Market Snapshot")
         ax.grid(True)
         buf = io.BytesIO()
@@ -81,17 +81,8 @@ async def full_report():
 
     await send_report(report)
 
-async def real_time_check():
-    alert = await call_agent("sentiment", "Quick scan. Return only one line if STRONG signal.")
-    if "STRONG" in alert.upper():
-        await send_alert(alert)
-
-async def sunday_self_review():
-    review = await call_agent("educator", "Sunday self-review of last week.")
-    await send_report(f"📅 SUNDAY SELF-REVIEW\n\n{review}")
-
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
-    print(f"🚀 Starting on port {port}")
+    print(f"🚀 Starting ultimate system on port {port}")
     uvicorn.run(app, host="0.0.0.0", port=port)
