@@ -20,39 +20,46 @@ async def health():
 @app.get("/trigger-report")
 async def trigger_report():
     await full_report()
-    return {"status": "✅ SUCCESS! Report sent to Telegram"}
-
-async def call_grok(prompt: str):
-    response = client.chat.completions.create(
-        model=GROK_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.1
-    )
-    return response.choices[0].message.content
+    return {"status": "✅ SUCCESS! Ultimate report + chart sent to Telegram"}
 
 async def full_report():
-    prompt = f"""Create a complete trading report for {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%Y-%m-%d %H:%M IST')}.
+    prompt = f"""Create the ultimate trading report for {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%Y-%m-%d %H:%M IST')}.
 
-Sections:
-1. STOCKS (Indian + Global, small/mid/large cap) - specific buy/sell/hold with quantity, risk, method, indicators, TradingView link, Dhan note
-2. COMMODITIES
-3. ETFs
-4. CRYPTO
+**DISCLAIMER:** This is educational paper-trading only. Not financial advice. Use in Dhan at your own risk. Past performance is not guarantee of future results.
 
-Include a long, detailed, powerful Educator Lesson teaching me about the market.
+**STOCKS** (Indian + Global, small/mid/large cap)
+- Company name + key info
+- Best method & indicators to use
+- When to buy/sell/hold (long/short)
+- Suggested quantity & capital allocation (max 1-2% risk)
+- TradingView link + Dhan note
 
-Be precise, educational, and actionable."""
+**COMMODITIES**
+**ETFs**
+**CRYPTO**
 
-    report = await call_grok(prompt)
+**EDUCATOR LESSON** (long, detailed, powerful teaching about trading, market psychology, risk management, Dhan app usage, indicators, etc.)
 
-    # Send chart
+Be specific, actionable, and educational."""
+
+    try:
+        response = client.chat.completions.create(
+            model=GROK_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1
+        )
+        report = response.choices[0].message.content
+    except Exception as e:
+        report = f"Error calling Grok: {str(e)}"
+
+    # Chart
     try:
         fig, ax = plt.subplots(figsize=(10,5))
-        ax.plot([1,2,3,4,5], [10,25,15,30,20], marker='o')
-        ax.set_title("Market Snapshot")
+        ax.plot([1,2,3,4,5], [10,25,15,30,20], marker='o', color='blue')
+        ax.set_title("Educational Market Snapshot")
         ax.grid(True)
         buf = io.BytesIO()
-        plt.savefig(buf, format="png")
+        plt.savefig(buf, format="png", bbox_inches='tight')
         plt.close(fig)
         buf.seek(0)
         await send_chart_image(buf)
@@ -64,4 +71,5 @@ Be precise, educational, and actionable."""
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
+    print(f"🚀 Ultimate system starting on port {port}")
     uvicorn.run(app, host="0.0.0.0", port=port)
