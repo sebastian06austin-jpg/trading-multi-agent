@@ -64,8 +64,12 @@ async def health_check(request):
 
 async def main():
     port = int(os.getenv("PORT", 8000))
-    print(f"🚀 MCP Server running on Render → http://0.0.0.0:{port}")
-    await mcp.run_http_async(transport="http", host="0.0.0.0", port=port)
+    print(f"🚀 MCP Server starting on Render port {port}")
+    await mcp.run_http_async(
+        transport="http",
+        host="0.0.0.0",
+        port=port
+    )
 
 if __name__ == "__main__":
     asyncio.run(main())
