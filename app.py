@@ -75,15 +75,21 @@ def supervisor(state):
         temperature=0.1
     )
     report = final.choices[0].message.content
-    # Generate chart
-    fig, ax = plt.subplots()
-    # Simple example plot — you can expand with real data
-    ax.plot([1,2,3], [10,20,15])
-    ax.set_title("Watchlist Snapshot")
-    buf = io.BytesIO()
-    plt.savefig(buf, format="png")
-    buf.seek(0)
-    asyncio.create_task(send_chart_image(buf))
+    
+    # Safe chart generation (with error handling)
+    try:
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.plot([1, 2, 3, 4, 5], [10, 25, 15, 30, 20], marker='o')
+        ax.set_title("Watchlist Snapshot (Educational)")
+        ax.grid(True)
+        buf = io.BytesIO()
+        plt.savefig(buf, format="png", bbox_inches='tight')
+        plt.close(fig)
+        buf.seek(0)
+        asyncio.create_task(send_chart_image(buf))
+    except Exception as chart_err:
+        print("Chart generation skipped:", chart_err)
+    
     return {"messages": [report]}
 
 graph.add_node("supervisor", supervisor)
