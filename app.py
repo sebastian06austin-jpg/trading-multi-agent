@@ -1,6 +1,5 @@
 from fastapi import FastAPI
-from contextlib import asynccontextmanager
-import asyncio, json, os, io
+import asyncio, os, io
 from datetime import datetime
 import pytz
 from openai import OpenAI
@@ -16,48 +15,44 @@ app = FastAPI()
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "model": GROK_MODEL, "time": datetime.now(pytz.timezone("Asia/Kolkata")).isoformat()}
+    return {"status": "healthy", "model": GROK_MODEL}
 
 @app.get("/trigger-report")
 async def trigger_report():
     await full_report()
-    return {"status": "✅ SUCCESS! Full ultimate report sent to Telegram"}
+    return {"status": "✅ SUCCESS! Report sent to Telegram"}
 
-async def call_agent(agent: str, prompt: str):
-    with open(f"agents/{agent}_prompt.md") as f:
-        system = f.read()
-    resp = client.chat.completions.create(
+async def call_grok(prompt: str):
+    response = client.chat.completions.create(
         model=GROK_MODEL,
-        messages=[{"role": "system", "content": system}, {"role": "user", "content": prompt}],
+        messages=[{"role": "user", "content": prompt}],
         temperature=0.1
     )
-    return resp.choices[0].message.content
+    return response.choices[0].message.content
 
 async def full_report():
-    base = f"Full analysis at {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%Y-%m-%d %H:%M IST')}. Indian + global focus."
+    prompt = f"""Create a complete trading report for {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%Y-%m-%d %H:%M IST')}.
 
-    quant = await call_agent("quant", base)
-    technical = await call_agent("technical", base)
-    sentiment = await call_agent("sentiment", base)
-    risk = await call_agent("risk", base)
-    options = await call_agent("options", base)
-    educator = await call_agent("educator", base)
+Sections:
+1. STOCKS (Indian + Global, small/mid/large cap) - specific buy/sell/hold with quantity, risk, method, indicators, TradingView link, Dhan note
+2. COMMODITIES
+3. ETFs
+4. CRYPTO
 
-    with open("agents/supervisor_prompt.md") as f:
-        sup = f.read()
-    final_prompt = f"{sup}\n\nAgent Outputs:\nQuant: {quant}\nTechnical: {technical}\nSentiment: {sentiment}\nRisk: {risk}\nOptions: {options}\nEducator Lesson: {educator}"
+Include a long, detailed, powerful Educator Lesson teaching me about the market.
 
-    resp = client.chat.completions.create(model=GROK_MODEL, messages=[{"role": "user", "content": final_prompt}], temperature=0.1)
-    report = resp.choices[0].message.content
+Be precise, educational, and actionable."""
 
-    # Chart
+    report = await call_grok(prompt)
+
+    # Send chart
     try:
         fig, ax = plt.subplots(figsize=(10,5))
-        ax.plot([1,2,3,4,5], [10,25,15,30,20], marker='o', color='blue')
-        ax.set_title("Educational Market Snapshot")
+        ax.plot([1,2,3,4,5], [10,25,15,30,20], marker='o')
+        ax.set_title("Market Snapshot")
         ax.grid(True)
         buf = io.BytesIO()
-        plt.savefig(buf, format="png", bbox_inches='tight')
+        plt.savefig(buf, format="png")
         plt.close(fig)
         buf.seek(0)
         await send_chart_image(buf)
@@ -66,30 +61,7 @@ async def full_report():
 
     await send_report(report)
 
-async def real_time_alert_loop():
-    while True:
-        if datetime.now(pytz.timezone("Asia/Kolkata")).hour in range(9, 16):  # only during market hours
-            alert = await call_agent("sentiment", "Quick scan. Return only one line if STRONG signal.")
-            if "STRONG" in alert.upper():
-                await send_alert(alert)
-        await asyncio.sleep(600)  # 10 minutes
-
-async def full_report_job():
-    await full_report()
-
-async def sunday_review_job():
-    review = await call_agent("educator", "Sunday self-review of last week.")
-    await send_report(f"📅 SUNDAY SELF-REVIEW\n\n{review}")
-
-@app.on_event("startup")
-async def startup():
-    print("🚀 ULTIMATE SYSTEM STARTED - All agents + charts + educator + real-time alerts")
-    asyncio.create_task(real_time_alert_loop())
-    # Daily reports at market open (9:15 AM IST = 3:45 UTC) and close (3:30 PM IST = 10:00 UTC)
-    # You can add APScheduler if you want, but background task is more stable on free tier
-
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
-    print(f"🚀 Starting ultimate system on port {port}")
     uvicorn.run(app, host="0.0.0.0", port=port)
