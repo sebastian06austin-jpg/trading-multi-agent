@@ -1,4 +1,5 @@
 import os
+import io
 from telegram import Bot
 import asyncio
 
