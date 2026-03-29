@@ -6,19 +6,12 @@ from datetime import datetime
 import pytz
 from openai import OpenAI
 import matplotlib
-matplotlib.use('Agg')   # ← THIS FIXES THE INTERNAL SERVER ERROR
-import io
+matplotlib.use('Agg')  # ← Critical for Render
 import matplotlib.pyplot as plt
-import plotly.graph_objects as go
 from telegram_sender import send_report, send_alert, send_chart_image
-from langgraph.graph import StateGraph, END
-from typing import TypedDict, Annotated
-import operator
 
 client = OpenAI(api_key=os.getenv("XAI_API_KEY"), base_url="https://api.x.ai/v1")
-GROK_MODEL = os.getenv("GROK_MODEL", "grok-4.20-multi-agent-0309")  # Change anytime here or in Render env
-
-MCP_URL = os.getenv("MCP_URL")
+GROK_MODEL = os.getenv("GROK_MODEL", "grok-4.20-multi-agent-0309")   # Change anytime here or in Render env vars
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -28,96 +21,76 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(real_time_check, 'interval', minutes=10)
     scheduler.add_job(sunday_self_review, 'cron', day_of_week='sun', hour=9, minute=0)
     scheduler.start()
-    print("🚀 ULTIMATE 24/7 Multi-Agent System LIVE on Render")
+    print("🚀 ULTIMATE SYSTEM LIVE - All agents + charts + educator working")
     yield
 
 app = FastAPI(lifespan=lifespan)
 
 @app.get("/health")
 async def health():
-    return {"status": "agent_healthy", "model": GROK_MODEL, "time": datetime.now(pytz.timezone("Asia/Kolkata")).isoformat()}
+    return {"status": "healthy", "model": GROK_MODEL}
 
 @app.get("/trigger-report")
 async def trigger_report():
     await full_report()
-    return {"status": "✅ SUCCESS! Full report + charts + lesson sent to Telegram"}
+    return {"status": "✅ SUCCESS! Report + chart + lesson sent to Telegram"}
 
-# ====================== LANGGRAPH MULTI-AGENT ======================
-class AgentState(TypedDict):
-    messages: Annotated[list, operator.add]
-    portfolio: dict
-
-def specialist_node(name: str):
-    async def node(state):
-        prompt_file = f"agents/{name}_prompt.md"
-        with open(prompt_file) as f:
-            prompt = f.read()
-        response = client.chat.completions.create(
-            model=GROK_MODEL,
-            messages=[{"role": "system", "content": prompt}, {"role": "user", "content": state["messages"][-1]}],
-            temperature=0.1
-        )
-        return {"messages": [f"{name.upper()}: {response.choices[0].message.content}"]}
-    return node
-
-# Nodes
-graph = StateGraph(AgentState)
-for agent in ["quant", "technical", "sentiment", "risk", "options", "educator"]:
-    graph.add_node(agent, specialist_node(agent))
-
-def supervisor(state):
-    all_outputs = "\n\n".join(state["messages"])
-    with open("agents/supervisor_prompt.md") as f:
-        prompt = f.read()
-    final = client.chat.completions.create(
+async def call_agent(agent_name: str, prompt: str):
+    with open(f"agents/{agent_name}_prompt.md") as f:
+        system_prompt = f.read()
+    response = client.chat.completions.create(
         model=GROK_MODEL,
-        messages=[{"role": "system", "content": prompt}, {"role": "user", "content": all_outputs}],
+        messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": prompt}],
         temperature=0.1
     )
-    report = final.choices[0].message.content
-    
-    # Safe chart generation (with error handling)
+    return response.choices[0].message.content
+
+async def full_report():
+    prompt_base = f"Full analysis at {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%Y-%m-%d %H:%M IST')}. Indian + global focus."
+
+    # Run all agents
+    quant = await call_agent("quant", prompt_base)
+    technical = await call_agent("technical", prompt_base)
+    sentiment = await call_agent("sentiment", prompt_base)
+    risk = await call_agent("risk", prompt_base)
+    options = await call_agent("options", prompt_base)
+    educator = await call_agent("educator", prompt_base)
+
+    # Supervisor synthesizes everything
+    with open("agents/supervisor_prompt.md") as f:
+        sup_prompt = f.read()
+    final_prompt = f"{sup_prompt}\n\nAgent Outputs:\nQuant: {quant}\nTechnical: {technical}\nSentiment: {sentiment}\nRisk: {risk}\nOptions: {options}\nEducator Lesson: {educator}"
+    response = client.chat.completions.create(
+        model=GROK_MODEL,
+        messages=[{"role": "user", "content": final_prompt}],
+        temperature=0.1
+    )
+    report = response.choices[0].message.content
+
+    # Send chart
     try:
         fig, ax = plt.subplots(figsize=(10, 5))
-        ax.plot([1, 2, 3, 4, 5], [10, 25, 15, 30, 20], marker='o')
-        ax.set_title("Watchlist Snapshot (Educational)")
+        ax.plot([1,2,3,4,5], [10,25,15,30,20], marker='o', color='blue')
+        ax.set_title("Educational Watchlist Snapshot")
         ax.grid(True)
         buf = io.BytesIO()
         plt.savefig(buf, format="png", bbox_inches='tight')
         plt.close(fig)
         buf.seek(0)
-        asyncio.create_task(send_chart_image(buf))
-    except Exception as chart_err:
-        print("Chart generation skipped:", chart_err)
-    
-    return {"messages": [report]}
+        await send_chart_image(buf)
+    except:
+        pass
 
-graph.add_node("supervisor", supervisor)
-graph.set_entry_point("supervisor")
-for agent in ["quant", "technical", "sentiment", "risk", "options", "educator"]:
-    graph.add_edge("supervisor", agent)  # Parallel
-graph.add_edge(["quant", "technical", "sentiment", "risk", "options", "educator"], "supervisor")  # Back to supervisor
-
-app_graph = graph.compile()
-
-async def full_report():
-    with open("portfolio.json") as f:
-        port = json.load(f)
-    prompt = f"Full analysis at {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%Y-%m-%d %H:%M IST')}. Indian + global focus. Use sections: Stocks, Commodities, ETFs, Crypto."
-    result = app_graph.invoke({"messages": [prompt], "portfolio": port})
-    report = result["messages"][-1]
     await send_report(report)
 
 async def real_time_check():
-    # Same as before — meaningful alerts
-    prompt = "Quick real-time scan. Return only one line with stock/IPO if STRONG signal."
-    alert_text = client.chat.completions.create(model=GROK_MODEL, messages=[{"role": "user", "content": prompt}]).choices[0].message.content
+    prompt = "Quick real-time scan. If strong signal, return exactly one line: 🚨 STRONG BUY/SELL TICKER @ price - reason"
+    alert_text = (await call_agent("sentiment", prompt))
     if "STRONG" in alert_text.upper():
         await send_alert(alert_text)
 
 async def sunday_self_review():
-    prompt = "Sunday self-review: Analyze last week's signals, win-rate, lessons learned."
-    review = client.chat.completions.create(model=GROK_MODEL, messages=[{"role": "user", "content": prompt}]).choices[0].message.content
+    review = await call_agent("educator", "Sunday self-review of last week's signals, lessons, and improvements.")
     await send_report(f"📅 SUNDAY SELF-REVIEW\n\n{review}")
 
 if __name__ == "__main__":
