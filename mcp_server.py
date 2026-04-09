@@ -12,7 +12,7 @@ from dhanhq import dhanhq
 
 client_id = os.getenv("DHAN_CLIENT_ID")
 access_token = os.getenv("DHAN_ACCESS_TOKEN")
-dhan = dhanhq.DhanHQ(client_id, access_token)
+dhan = dhanhq(DHAN_CLIENT_ID, DHAN_ACCESS_TOKEN)
 
 @mcp.tool()
 def get_dhan_live_quote(symbol: str) -> str:
