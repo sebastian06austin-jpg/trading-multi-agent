@@ -4,8 +4,28 @@ from datetime import datetime
 import pytz
 from starlette.responses import JSONResponse
 import asyncio
+from dhanhq import dhanhq
 
 mcp = FastMCP("trading-mcp")
+
+from dhanhq import dhanhq
+
+client_id = os.getenv("DHAN_CLIENT_ID")
+access_token = os.getenv("DHAN_ACCESS_TOKEN")
+dhan = dhanhq.DhanHQ(client_id, access_token)
+
+@mcp.tool()
+def get_dhan_live_quote(symbol: str) -> str:
+    """Get live price from Dhan"""
+    data = dhan.get_quote(symbol)
+    return json.dumps(data)
+
+@mcp.tool()
+def get_dhan_portfolio() -> str:
+    """Get live portfolio and positions from Dhan"""
+    holdings = dhan.get_holdings()
+    positions = dhan.get_positions()
+    return json.dumps({"holdings": holdings, "positions": positions})
 
 @mcp.tool()
 def get_nse_data(ticker: str, period: str = "1d") -> str:
