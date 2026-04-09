@@ -8,11 +8,14 @@ from dhanhq import dhanhq
 
 mcp = FastMCP("trading-mcp")
 
-from dhanhq import dhanhq
+# === SAFE DHAN INITIALIZATION ===
+DHAN_CLIENT_ID = os.getenv("DHAN_CLIENT_ID")
+DHAN_ACCESS_TOKEN = os.getenv("DHAN_ACCESS_TOKEN")
 
-client_id = os.getenv("DHAN_CLIENT_ID")
-access_token = os.getenv("DHAN_ACCESS_TOKEN")
-dhan = dhanhq(DHAN_CLIENT_ID, DHAN_ACCESS_TOKEN)
+if not DHAN_CLIENT_ID or not DHAN_ACCESS_TOKEN:
+    print("⚠️ Warning: DHAN_CLIENT_ID or DHAN_ACCESS_TOKEN not set in Render env vars")
+
+dhan = dhanhq(DHAN_CLIENT_ID, DHAN_ACCESS_TOKEN) if DHAN_CLIENT_ID and DHAN_ACCESS_TOKEN else None
 
 @mcp.tool()
 def get_dhan_live_quote(symbol: str) -> str:
