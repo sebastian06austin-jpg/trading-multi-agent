@@ -17,4 +17,3 @@ langchain-openai
 matplotlib
 plotly
 dhanhq
-sqlite
