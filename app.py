@@ -63,7 +63,7 @@ async def telegram_webhook(request: Request):
             await send_alert(f"📊 **Your Current Dhan Portfolio:**\n{data}")
             return {"status": "ok"}
 
-                if text == "/tradehistory":
+        if text == "/tradehistory":
             data = get_trade_history()
             await send_alert(f"📜 **Your Dhan Trade History:**\n{data}")
             return {"status": "ok"}
