@@ -69,10 +69,22 @@ async def telegram_webhook(request: Request):
             return {"status": "ok"}
 
         if text == "/quote":
-            symbol = "RELIANCE"  # default, or parse from message
+            symbol = "RELIANCE"  # default
             data = get_dhan_live_quote(symbol)
             await send_alert(f"📈 Live Quote for {symbol}:\n{data}")
             return {"status": "ok"}
+
+        # === NORMAL GROK CHAT ===
+        history = get_user_history(user_id)
+        system = f"You are Grok. User preferences: {json.dumps(prefs)}. Be helpful, trading-focused."
+        reply = await call_grok(f"{system}\n\n{text}")
+        save_message(user_id, "assistant", reply)
+        await send_alert(reply)
+        return {"status": "ok"}
+
+    except Exception as e:
+        print("Webhook error:", str(e))
+        return {"status": "ok"}
 
         # === NORMAL CONVERSATIONAL CHAT ===
         history = get_user_history(user_id)
