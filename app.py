@@ -18,11 +18,11 @@ GROK_MODEL = os.getenv("GROK_MODEL", "grok-4.20-multi-agent-0309")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
-    scheduler.add_job(full_report, 'cron', hour=2, minute=30)   # 8 AM IST
-    scheduler.add_job(full_report, 'cron', hour=12, minute=30)  # 6 PM IST
+    scheduler.add_job(full_report, 'cron', hour=2, minute=30)
+    scheduler.add_job(full_report, 'cron', hour=12, minute=30)
     scheduler.add_job(sunday_self_review, 'cron', day_of_week='sun', hour=9, minute=0)
     scheduler.start()
-    print("🚀 ULTIMATE SYSTEM LIVE — Webhook + Scheduler + All features")
+    print("🚀 ULTIMATE SYSTEM LIVE — All features active")
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -34,24 +34,27 @@ async def health():
 @app.get("/trigger-report")
 async def trigger_report():
     await full_report()
-    return {"status": "✅ SUCCESS! Report sent"}
+    return {"status": "✅ SUCCESS!"}
 
-# TradingView Webhook
+# TradingView webhook
 @app.post("/tv-webhook")
 async def tv_webhook(request: Request):
     data = await request.json()
     await send_alert(f"📢 TradingView Alert: {data.get('message', 'New signal')}")
     return {"status": "received"}
 
-# Telegram Webhook (this is the fix)
+# ROBUST Telegram Webhook (this fixes the 500 error)
 @app.post("/telegram-webhook")
 async def telegram_webhook(request: Request):
-    update = await request.json()
-    # Process update with the same handler logic
-    from telegram import Update
-    update_obj = Update.de_json(update, application.bot)
-    await application.process_update(update_obj)
-    return {"status": "ok"}
+    try:
+        update = await request.json()
+        from telegram import Update
+        update_obj = Update.de_json(update, application.bot)
+        await application.process_update(update_obj)
+        return {"status": "ok"}
+    except Exception as e:
+        print("Webhook error:", str(e))
+        return {"status": "ok"}   # Always return 200 OK to Telegram
 
 async def call_grok(prompt: str):
     response = client.chat.completions.create(
