@@ -63,23 +63,9 @@ async def telegram_webhook(request: Request):
             await send_alert(f"📊 **Your Current Dhan Portfolio:**\n{data}")
             return {"status": "ok"}
 
-        if text == "/tradehistory":
-            try:
-                # Try multiple possible methods for trade history
-                orders = None
-                if hasattr(dhan, 'get_order_list'):
-                    orders = dhan.get_order_list()
-                elif hasattr(dhan, 'get_orders'):
-                    orders = dhan.get_orders()
-                else:
-                    orders = "Dhan API does not support order history in this version"
-
-                if orders:
-                    await send_alert(f"📜 **Your Trade History (Recent Orders):**\n{json.dumps(orders, indent=2, default=str)}")
-                else:
-                    await send_alert("📜 No recent orders found or history not available.")
-            except Exception as e:
-                await send_alert(f"❌ Could not fetch trade history.\nError: {str(e)}")
+                if text == "/tradehistory":
+            data = get_trade_history()
+            await send_alert(f"📜 **Your Dhan Trade History:**\n{data}")
             return {"status": "ok"}
 
         if text == "/quote":
