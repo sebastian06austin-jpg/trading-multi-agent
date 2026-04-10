@@ -17,3 +17,5 @@ langchain-openai
 matplotlib
 plotly
 dhanhq
+pip
+--upgrade pip
