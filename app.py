@@ -50,31 +50,38 @@ async def telegram_webhook(request: Request):
         update = await request.json()
         if "message" not in update or "text" not in update["message"]:
             return {"status": "ok"}
+        
         text = update["message"]["text"]
         user_id = str(update["message"]["from"]["id"])
         
         save_message(user_id, "user", text)
+
+        if text == "/portfolio":
+            data = get_dhan_portfolio()
+            await send_alert(f"📊 **Your Dhan Portfolio:**\n{data}")
+            return {"status": "ok"}
+
+        if text == "/tradehistory":
+            # Dhan has order list
+            try:
+                orders = dhan.get_order_list() if dhan else "Not configured"
+                await send_alert(f"📜 **Recent Trade History:**\n{json.dumps(orders, indent=2)}")
+            except:
+                await send_alert("❌ Could not fetch trade history")
+            return {"status": "ok"}
+
+        # Rest of your normal chat code remains the same...
         prefs = get_user_prefs(user_id)
-
-        # Special commands
-        if text.startswith("/quote"):
-            symbol = text.split()[-1] if len(text.split()) > 1 else "RELIANCE"
-            data = get_dhan_live_quote(symbol)
-            await send_alert(f"📊 {symbol} Live Quote:\n{data}")
-            return {"status": "ok"}
+        history = get_user_history(user_id)
+        system = f"You are Grok. User preferences: {json.dumps(prefs)}. Be helpful, trading-focused."
+        reply = await call_grok(f"{system}\n\n{text}")
+        save_message(user_id, "assistant", reply)
+        await send_alert(reply)
+        return {"status": "ok"}
+    except Exception as e:
+        print("Webhook error:", str(e))
+        return {"status": "ok"}
         
-        if text.startswith("/chart"):
-            symbol = text.split()[-1] if len(text.split()) > 1 else "RELIANCE"
-            link = f"https://www.tradingview.com/chart/?symbol=NSE:{symbol.replace('.NS','')}"
-            await send_alert(f"📈 Chart for {symbol}:\n{link}")
-            return {"status": "ok"}
-
-        if "risk" in text.lower():
-            risk = "low" if "low" in text.lower() else "high" if "high" in text.lower() else "medium"
-            set_user_pref(user_id, "risk_level", risk)
-            await send_alert(f"✅ Risk level updated to **{risk}**")
-            return {"status": "ok"}
-
         # Normal Grok chat
         history = get_user_history(user_id)
         system = f"You are Grok. User preferences: {json.dumps(prefs)}. Be helpful, trading-focused."
