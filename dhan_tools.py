@@ -27,17 +27,23 @@ def get_dhan_portfolio() -> str:
         return f"Error: {str(e)}"
 
 def get_trade_history() -> str:
-    """Get recent trade / order history from Dhan"""
+    """Robust trade history with multiple fallback methods"""
     if not dhan:
         return "❌ Dhan not configured"
     try:
-        # Try both possible methods
+        # Try different possible methods
         if hasattr(dhan, 'get_order_list'):
             orders = dhan.get_order_list()
         elif hasattr(dhan, 'get_orders'):
             orders = dhan.get_orders()
+        elif hasattr(dhan, 'get_order_history'):
+            orders = dhan.get_order_history()
         else:
-            return "❌ Trade history not supported in current Dhan API version"
-        return json.dumps(orders, indent=2, default=str)
+            orders = None
+
+        if orders and len(orders) > 0:
+            return json.dumps(orders, indent=2, default=str)
+        else:
+            return "No recent orders found (or history not available in this Dhan API version)"
     except Exception as e:
-        return f"Error fetching trade history: {str(e)}"
+        return f"Could not fetch trade history.\nError: {str(e)}"
