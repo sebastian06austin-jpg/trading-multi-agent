@@ -51,36 +51,55 @@ async def telegram_webhook(request: Request):
         if "message" not in update or "text" not in update["message"]:
             return {"status": "ok"}
         
-        text = update["message"]["text"]
+        text = update["message"]["text"].strip()
         user_id = str(update["message"]["from"]["id"])
         
         save_message(user_id, "user", text)
+        prefs = get_user_prefs(user_id)
 
+        # === SPECIAL COMMANDS ===
         if text == "/portfolio":
             data = get_dhan_portfolio()
-            await send_alert(f"📊 **Your Dhan Portfolio:**\n{data}")
+            await send_alert(f"📊 **Your Current Dhan Portfolio:**\n{data}")
             return {"status": "ok"}
 
         if text == "/tradehistory":
-            # Dhan has order list
             try:
-                orders = dhan.get_order_list() if dhan else "Not configured"
-                await send_alert(f"📜 **Recent Trade History:**\n{json.dumps(orders, indent=2)}")
-            except:
-                await send_alert("❌ Could not fetch trade history")
+                # Try multiple possible methods for trade history
+                orders = None
+                if hasattr(dhan, 'get_order_list'):
+                    orders = dhan.get_order_list()
+                elif hasattr(dhan, 'get_orders'):
+                    orders = dhan.get_orders()
+                else:
+                    orders = "Dhan API does not support order history in this version"
+
+                if orders:
+                    await send_alert(f"📜 **Your Trade History (Recent Orders):**\n{json.dumps(orders, indent=2, default=str)}")
+                else:
+                    await send_alert("📜 No recent orders found or history not available.")
+            except Exception as e:
+                await send_alert(f"❌ Could not fetch trade history.\nError: {str(e)}")
             return {"status": "ok"}
 
-        # Rest of your normal chat code remains the same...
-        prefs = get_user_prefs(user_id)
+        if text == "/quote":
+            symbol = "RELIANCE"  # default, or parse from message
+            data = get_dhan_live_quote(symbol)
+            await send_alert(f"📈 Live Quote for {symbol}:\n{data}")
+            return {"status": "ok"}
+
+        # === NORMAL CONVERSATIONAL CHAT ===
         history = get_user_history(user_id)
         system = f"You are Grok. User preferences: {json.dumps(prefs)}. Be helpful, trading-focused."
         reply = await call_grok(f"{system}\n\n{text}")
         save_message(user_id, "assistant", reply)
         await send_alert(reply)
         return {"status": "ok"}
+
     except Exception as e:
         print("Webhook error:", str(e))
         return {"status": "ok"}
+        
         
         # Normal Grok chat
         history = get_user_history(user_id)
