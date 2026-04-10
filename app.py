@@ -1,4 +1,6 @@
 from fastapi import FastAPI, Request
+from contextlib import asynccontextmanager
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import asyncio, json, os, io
 from datetime import datetime
 import pytz
@@ -13,44 +15,72 @@ from dhan_tools import get_dhan_live_quote, get_dhan_portfolio
 client = OpenAI(api_key=os.getenv("XAI_API_KEY"), base_url="https://api.x.ai/v1")
 GROK_MODEL = os.getenv("GROK_MODEL", "grok-4.20-multi-agent-0309")
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
+    scheduler.add_job(full_report, 'cron', hour=2, minute=30)   # 8 AM IST
+    scheduler.add_job(full_report, 'cron', hour=12, minute=30)  # 6 PM IST
+    scheduler.add_job(sunday_self_review, 'cron', day_of_week='sun', hour=9, minute=0)
+    scheduler.start()
+    print("🚀 MOST ADVANCED SYSTEM LIVE — All features active")
+    yield
+
+app = FastAPI(lifespan=lifespan)
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy"}
+    return {"status": "healthy", "model": GROK_MODEL}
 
 @app.get("/trigger-report")
 async def trigger_report():
     await full_report()
     return {"status": "✅ SUCCESS!"}
 
-# Telegram Webhook (simple and robust)
+# TradingView webhook
+@app.post("/tv-webhook")
+async def tv_webhook(request: Request):
+    data = await request.json()
+    await send_alert(f"📢 TradingView Alert: {data.get('message', 'New signal')}")
+    return {"status": "received"}
+
+# Telegram Webhook (stable)
 @app.post("/telegram-webhook")
 async def telegram_webhook(request: Request):
     try:
         update = await request.json()
-        if "message" in update and "text" in update["message"]:
-            text = update["message"]["text"]
-            user_id = str(update["message"]["from"]["id"])
-            
-            save_message(user_id, "user", text)
-            
-            prefs = get_user_prefs(user_id)
-            
-            # Auto preference update
-            if "risk" in text.lower():
-                risk = "low" if "low" in text.lower() else "high" if "high" in text.lower() else "medium"
-                set_user_pref(user_id, "risk_level", risk)
-                # Send reply
-                await send_alert(f"✅ Risk level updated to **{risk}**")
-                return {"status": "ok"}
-            
-            # Normal Grok reply
-            history = get_user_history(user_id)
-            system = f"You are Grok. User preferences: {json.dumps(prefs)}. Be helpful, trading-focused."
-            reply = await call_grok(f"{system}\n\n{text}")
-            save_message(user_id, "assistant", reply)
-            await send_alert(reply)
+        if "message" not in update or "text" not in update["message"]:
+            return {"status": "ok"}
+        text = update["message"]["text"]
+        user_id = str(update["message"]["from"]["id"])
+        
+        save_message(user_id, "user", text)
+        prefs = get_user_prefs(user_id)
+
+        # Special commands
+        if text.startswith("/quote"):
+            symbol = text.split()[-1] if len(text.split()) > 1 else "RELIANCE"
+            data = get_dhan_live_quote(symbol)
+            await send_alert(f"📊 {symbol} Live Quote:\n{data}")
+            return {"status": "ok"}
+        
+        if text.startswith("/chart"):
+            symbol = text.split()[-1] if len(text.split()) > 1 else "RELIANCE"
+            link = f"https://www.tradingview.com/chart/?symbol=NSE:{symbol.replace('.NS','')}"
+            await send_alert(f"📈 Chart for {symbol}:\n{link}")
+            return {"status": "ok"}
+
+        if "risk" in text.lower():
+            risk = "low" if "low" in text.lower() else "high" if "high" in text.lower() else "medium"
+            set_user_pref(user_id, "risk_level", risk)
+            await send_alert(f"✅ Risk level updated to **{risk}**")
+            return {"status": "ok"}
+
+        # Normal Grok chat
+        history = get_user_history(user_id)
+        system = f"You are Grok. User preferences: {json.dumps(prefs)}. Be helpful, trading-focused."
+        reply = await call_grok(f"{system}\n\n{text}")
+        save_message(user_id, "assistant", reply)
+        await send_alert(reply)
         return {"status": "ok"}
     except Exception as e:
         print("Webhook error:", str(e))
@@ -66,9 +96,13 @@ async def call_grok(prompt: str):
 
 async def full_report():
     dhan_data = get_dhan_portfolio()
-    prompt = f"Full analysis at {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%Y-%m-%d %H:%M IST')}. Use live Dhan data: {dhan_data}. Include Stocks, Commodities, ETFs, Crypto with precise recommendations + long Educator lesson."
+    prompt = f"Full analysis at {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%Y-%m-%d %H:%M IST')}. Use live Dhan data: {dhan_data}. Include Stocks, Commodities, ETFs, Crypto with precise recommendations + long Educator lesson + TradingView links."
     report = await call_grok(prompt)
     await send_report(report)
+
+async def sunday_self_review():
+    review = await call_grok("Sunday self-review of last week")
+    await send_report(f"📅 SUNDAY SELF-REVIEW\n\n{review}")
 
 if __name__ == "__main__":
     import uvicorn
