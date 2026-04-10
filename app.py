@@ -10,7 +10,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from telegram_sender import send_report, send_alert, send_chart_image
 from database import get_user_prefs, set_user_pref, save_message, get_user_history
-from dhan_tools import get_dhan_live_quote, get_dhan_portfolio
+from dhan_tools import get_dhan_live_quote, get_dhan_portfolio, get_trade_history
 
 client = OpenAI(api_key=os.getenv("XAI_API_KEY"), base_url="https://api.x.ai/v1")
 GROK_MODEL = os.getenv("GROK_MODEL", "grok-4.20-multi-agent-0309")
