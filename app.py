@@ -18,11 +18,11 @@ GROK_MODEL = os.getenv("GROK_MODEL", "grok-4.20-multi-agent-0309")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
-    scheduler.add_job(full_report, 'cron', hour=2, minute=30)
-    scheduler.add_job(full_report, 'cron', hour=12, minute=30)
+    scheduler.add_job(full_report, 'cron', hour=2, minute=30)   # 8 AM IST
+    scheduler.add_job(full_report, 'cron', hour=12, minute=30)  # 6 PM IST
     scheduler.add_job(sunday_self_review, 'cron', day_of_week='sun', hour=9, minute=0)
     scheduler.start()
-    print("🚀 ULTIMATE SYSTEM LIVE — All features active")
+    print("🚀 ULTIMATE SYSTEM LIVE — Webhook + Scheduler + All features")
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -36,11 +36,22 @@ async def trigger_report():
     await full_report()
     return {"status": "✅ SUCCESS! Report sent"}
 
+# TradingView Webhook
 @app.post("/tv-webhook")
 async def tv_webhook(request: Request):
     data = await request.json()
     await send_alert(f"📢 TradingView Alert: {data.get('message', 'New signal')}")
     return {"status": "received"}
+
+# Telegram Webhook (this is the fix)
+@app.post("/telegram-webhook")
+async def telegram_webhook(request: Request):
+    update = await request.json()
+    # Process update with the same handler logic
+    from telegram import Update
+    update_obj = Update.de_json(update, application.bot)
+    await application.process_update(update_obj)
+    return {"status": "ok"}
 
 async def call_grok(prompt: str):
     response = client.chat.completions.create(
@@ -52,7 +63,7 @@ async def call_grok(prompt: str):
 
 async def full_report():
     dhan_data = get_dhan_portfolio()
-    prompt = f"Full analysis at {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%Y-%m-%d %H:%M IST')}. Use live Dhan data: {dhan_data}. Include all sections: Stocks, Commodities, ETFs, Crypto with precise recommendations + long Educator lesson."
+    prompt = f"Full analysis at {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%Y-%m-%d %H:%M IST')}. Use live Dhan data: {dhan_data}. Include Stocks, Commodities, ETFs, Crypto with precise recommendations + long Educator lesson."
     report = await call_grok(prompt)
     await send_report(report)
 
@@ -60,7 +71,7 @@ async def sunday_self_review():
     review = await call_grok("Sunday self-review")
     await send_report(f"📅 SUNDAY SELF-REVIEW\n\n{review}")
 
-# ====================== GROK-LIKE CONVERSATIONAL BOT ======================
+# Grok-like Conversational Handler
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
 
@@ -73,14 +84,13 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     prefs = get_user_prefs(user_id)
 
-    # Auto preference update
     if "risk" in text.lower():
         risk = "low" if "low" in text.lower() else "high" if "high" in text.lower() else "medium"
         set_user_pref(user_id, "risk_level", risk)
         await update.message.reply_text(f"✅ Risk level updated to **{risk}**")
 
     history = get_user_history(user_id)
-    system = f"You are Grok. User preferences: {json.dumps(prefs)}. Be helpful, trading-focused, and fun."
+    system = f"You are Grok. User preferences: {json.dumps(prefs)}. Be helpful, trading-focused."
     reply = await call_grok(f"{system}\n\n{text}")
     save_message(user_id, "assistant", reply)
     await update.message.reply_text(reply)
@@ -89,10 +99,9 @@ application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat_han
 
 @app.on_event("startup")
 async def startup():
-    asyncio.create_task(application.initialize())
-    asyncio.create_task(application.start())
-    asyncio.create_task(application.updater.start_polling())
-    print("🚀 Telegram conversational bot started")
+    await application.initialize()
+    await application.start()
+    print("🚀 Telegram webhook mode active")
 
 if __name__ == "__main__":
     import uvicorn
