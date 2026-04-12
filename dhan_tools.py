@@ -2,24 +2,14 @@ from dhanhq import dhanhq
 import json
 import os
 
-# Global Dhan client (initialized once)
-dhan = None
+DHAN_CLIENT_ID = os.getenv("DHAN_CLIENT_ID")
+DHAN_ACCESS_TOKEN = os.getenv("DHAN_ACCESS_TOKEN")
 
-def init_dhan():
-    global dhan
-    client_id = os.getenv("DHAN_CLIENT_ID")
-    access_token = os.getenv("DHAN_ACCESS_TOKEN")
-    if client_id and access_token:
-        dhan = dhanhq(client_id, access_token)
-        print("✅ Dhan connected successfully")
-    else:
-        print("⚠️ Dhan credentials missing in env vars")
-
-init_dhan()
+dhan = dhanhq(DHAN_CLIENT_ID, DHAN_ACCESS_TOKEN) if DHAN_CLIENT_ID and DHAN_ACCESS_TOKEN else None
 
 def get_dhan_live_quote(symbol: str) -> str:
     if not dhan:
-        return "❌ Dhan not connected"
+        return "❌ Dhan not configured"
     try:
         data = dhan.get_quote(symbol)
         return json.dumps(data, default=str)
@@ -28,7 +18,7 @@ def get_dhan_live_quote(symbol: str) -> str:
 
 def get_dhan_portfolio() -> str:
     if not dhan:
-        return "❌ Dhan not connected"
+        return "❌ Dhan not configured"
     try:
         holdings = dhan.get_holdings()
         positions = dhan.get_positions()
@@ -38,17 +28,14 @@ def get_dhan_portfolio() -> str:
 
 def get_trade_history() -> str:
     if not dhan:
-        return "❌ Dhan not connected"
+        return "❌ Dhan not configured"
     try:
-        # Try all possible methods for trade/order history
         if hasattr(dhan, 'get_order_list'):
             data = dhan.get_order_list()
         elif hasattr(dhan, 'get_orders'):
             data = dhan.get_orders()
-        elif hasattr(dhan, 'get_order_history'):
-            data = dhan.get_order_history()
         else:
-            return "Dhan API does not support trade history on your account"
+            data = "No order history method available in this version"
         return json.dumps(data, indent=2, default=str)
     except Exception as e:
-        return f"Could not fetch trade history: {str(e)}"
+        return f"Error fetching trade history: {str(e)}"
