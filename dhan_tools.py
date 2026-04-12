@@ -2,6 +2,7 @@ from dhanhq import dhanhq
 import json
 import os
 
+# Global Dhan client (initialized once)
 dhan = None
 
 def init_dhan():
@@ -12,13 +13,13 @@ def init_dhan():
         dhan = dhanhq(client_id, access_token)
         print("✅ Dhan connected successfully")
     else:
-        print("⚠️ Dhan credentials not found in env vars")
+        print("⚠️ Dhan credentials missing in env vars")
 
 init_dhan()
 
 def get_dhan_live_quote(symbol: str) -> str:
     if not dhan:
-        return "❌ Dhan not connected. Check env vars."
+        return "❌ Dhan not connected"
     try:
         data = dhan.get_quote(symbol)
         return json.dumps(data, default=str)
@@ -27,24 +28,27 @@ def get_dhan_live_quote(symbol: str) -> str:
 
 def get_dhan_portfolio() -> str:
     if not dhan:
-        return "❌ Dhan not connected."
+        return "❌ Dhan not connected"
     try:
         holdings = dhan.get_holdings()
         positions = dhan.get_positions()
         return json.dumps({"holdings": holdings, "positions": positions}, default=str)
     except Exception as e:
-        return f"Error fetching portfolio: {str(e)}"
+        return f"Error: {str(e)}"
 
 def get_trade_history() -> str:
     if not dhan:
-        return "❌ Dhan not connected."
+        return "❌ Dhan not connected"
     try:
+        # Try all possible methods for trade/order history
         if hasattr(dhan, 'get_order_list'):
             data = dhan.get_order_list()
         elif hasattr(dhan, 'get_orders'):
             data = dhan.get_orders()
+        elif hasattr(dhan, 'get_order_history'):
+            data = dhan.get_order_history()
         else:
-            data = "No order history method available"
+            return "Dhan API does not support trade history on your account"
         return json.dumps(data, indent=2, default=str)
     except Exception as e:
-        return f"Error fetching trade history: {str(e)}"
+        return f"Could not fetch trade history: {str(e)}"
