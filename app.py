@@ -86,6 +86,22 @@ async def telegram_webhook(request: Request):
     except Exception as e:
         print("Webhook error:", str(e))
         return {"status": "ok"}
+
+@app.post("/dhan-postback")
+async def dhan_postback(request: Request):
+    try:
+        data = await request.json()
+        print("📨 Dhan Postback Received:", json.dumps(data, indent=2))
+        
+        # Optional: Forward important updates to Telegram
+        if data.get("orderStatus") in ["TRADED", "REJECTED", "CANCELLED"]:
+            await send_alert(f"📨 Dhan Order Update:\n{json.dumps(data, indent=2)}")
+        
+        return {"status": "received"}
+    except Exception as e:
+        print("Dhan postback error:", str(e))
+        return {"status": "received"}
+        
         
 async def call_grok(prompt: str):
     response = client.chat.completions.create(
