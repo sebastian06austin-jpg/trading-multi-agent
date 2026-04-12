@@ -5,7 +5,7 @@ import asyncio, json, os, traceback
 from datetime import datetime
 import pytz
 from xai_sdk import Client
-from xai_sdk.chat import user, tool_result
+from xai_sdk.chat import user, tool_result, system, user
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -13,6 +13,7 @@ from telegram_sender import send_report, send_alert, send_chart_image
 from database import get_user_prefs, set_user_pref, save_message, get_user_history
 from dhan_tools import get_dhan_live_quote, get_dhan_portfolio, get_trade_history
 
+# ====================== INITIALIZATION ======================
 client = None
 try:
     client = Client(api_key=os.getenv("XAI_API_KEY"))
@@ -122,14 +123,14 @@ async def call_grok(prompt: str):
     if client is None:
         return "❌ xAI SDK not initialized."
     try:
-        print("📤 Calling Grok...")
+        print("📤 Calling Grok with prompt length:", len(prompt))
         chat = client.chat.create(model=GROK_MODEL)
         chat.append(user(prompt))
 
         final_content = "**No response from model**"
 
         for item in chat.stream():
-            # Safe handling for tuple or single object
+            # Safe handling for tuple (some SDK versions return (response, chunk))
             if isinstance(item, tuple) and len(item) > 0:
                 response = item[0]
             else:
@@ -147,8 +148,9 @@ async def call_grok(prompt: str):
                         print(f"🔧 Tool error {func_name}: {e}")
                         chat.append(tool_result(f"Tool error: {str(e)}"))
             else:
+                # Final answer
                 final_content = getattr(response, 'content', str(response))
-                print("📥 Received final content, length:", len(final_content))
+                print("📥 Received final content from Grok, length:", len(final_content))
                 break
 
         return final_content if final_content.strip() else "**Empty response from Grok**"
