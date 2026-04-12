@@ -91,17 +91,17 @@ async def telegram_webhook(request: Request):
 
         if text == "/portfolio" or "portfolio" in text or "holdings" in text or "positions" in text:
             data = get_dhan_portfolio()
-            await send_alert(f"📊 **RAW Dhan Portfolio Response:**\n{data}")
+            await send_alert(f"📊 **RAW Dhan Portfolio:**\n{data}")
             return {"status": "ok"}
 
         if text == "/tradehistory" or "trade history" in text or "orders" in text or "history" in text:
             data = get_trade_history()
-            await send_alert(f"📜 **RAW Dhan Trade History Response:**\n{data}")
+            await send_alert(f"📜 **RAW Dhan Trade History:**\n{data}")
             return {"status": "ok"}
 
-        # Normal chat
+        # Normal chat — no simulation
         history = get_user_history(user_id)
-        system = f"You are Grok. User preferences: {json.dumps(prefs)}. Be helpful, trading-focused."
+        system = f"You are Grok. User preferences: {json.dumps(prefs)}. Be helpful, trading-focused. Use real Dhan data only."
         reply = await call_grok(f"{system}\n\n{text}")
         save_message(user_id, "assistant", reply)
         await send_alert(reply)
