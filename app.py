@@ -13,7 +13,7 @@ from database import get_user_prefs, set_user_pref, save_message, get_user_histo
 from dhan_tools import get_dhan_live_quote, get_dhan_portfolio, get_trade_history
 
 client = OpenAI(api_key=os.getenv("XAI_API_KEY"), base_url="https://api.x.ai/v1")
-GROK_MODEL = os.getenv("GROK_MODEL", "grok-4.20-multi-agent-0309")
+GROK_MODEL = os.getenv("GROK_MODEL", "grok-4.20-reasoning")   # Stable model with tool calling
 
 # Advanced Tool Set for Multi-Agent Orchestration
 tools = [
@@ -54,7 +54,7 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(full_report, 'cron', hour=12, minute=30)
     scheduler.add_job(sunday_self_review, 'cron', day_of_week='sun', hour=10, minute=0)
     scheduler.start()
-    print("🚀 GROK 4.20 MULTI-AGENT SYSTEM LIVE — Tool Calling + All Features")
+    print("🚀 GROK 4.20 MULTI-AGENT TRUTH-SEEKING SYSTEM LIVE")
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -131,10 +131,14 @@ async def telegram_webhook(request: Request):
             await send_alert(f"📈 Live Quote for {symbol}:\n{data}")
             return {"status": "ok"}
 
-        # Grok 4.20 Multi-Agent chat with tool calling
+        # Multi-Agent Grok chat with tool calling
         dhan_data = get_dhan_portfolio()
         history = get_user_history(user_id)
-        system = f"You are Grok 4.20 Multi-Agent — truth-seeking, highly intelligent, with deep knowledge of finance, business, macro, valuation, risk, SEBI rules, and Indian/global markets. You have full real-time access to the user's Dhan account. Current portfolio: {dhan_data}. User preferences: {json.dumps(prefs)}. Be helpful, precise, and actionable."
+        system = f"""You are Grok 4.20 Multi-Agent — truth-seeking, highly intelligent, with deep knowledge of finance, business, macroeconomics, valuation, risk management, behavioral finance, SEBI regulations, and Indian/global markets.
+You have full real-time access to the user's Dhan account. Current portfolio: {dhan_data}.
+User preferences: {json.dumps(prefs)}.
+Always think step-by-step, use tools when needed, self-critique, and give precise, actionable, honest advice."""
+
         reply = await call_grok(f"{system}\n\n{text}")
         save_message(user_id, "assistant", reply)
         await send_alert(reply)
