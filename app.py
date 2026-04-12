@@ -1,11 +1,11 @@
-from fastapi import FastAPI, Request
+\from fastapi import FastAPI, Request
 from contextlib import asynccontextmanager
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import asyncio, json, os, traceback
 from datetime import datetime
 import pytz
-from xai_sdk import Client
-from xai_sdk.chat import user, tool_result, system, user
+from xai_sdk import AsyncClient
+from xai_sdk.chat import user, tool_result
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -16,8 +16,8 @@ from dhan_tools import get_dhan_live_quote, get_dhan_portfolio, get_trade_histor
 # ====================== INITIALIZATION ======================
 client = None
 try:
-    client = Client(api_key=os.getenv("XAI_API_KEY"))
-    print("✅ xAI SDK initialized successfully")
+    client = AsyncClient(api_key=os.getenv("XAI_API_KEY"))
+    print("✅ xAI AsyncClient initialized successfully")
 except Exception as e:
     print(f"❌ xAI SDK init failed: {e}")
 
@@ -127,33 +127,16 @@ async def call_grok(prompt: str):
         chat = client.chat.create(model=GROK_MODEL)
         chat.append(user(prompt))
 
-        final_content = "**No response from model**"
+        full_response = ""
 
-        for item in chat.stream():
-            # Safe handling for tuple (some SDK versions return (response, chunk))
-            if isinstance(item, tuple) and len(item) > 0:
-                response = item[0]
-            else:
-                response = item
+        async for response, chunk in chat.stream():
+            if hasattr(chunk, 'content') and chunk.content:
+                full_response += chunk.content
+                print("📥 Chunk received, length so far:", len(full_response))
 
-            if hasattr(response, 'tool_calls') and response.tool_calls:
-                for tool_call in response.tool_calls:
-                    func_name = tool_call.function.name
-                    try:
-                        args = json.loads(tool_call.function.arguments) if tool_call.function.arguments else {}
-                        result = tool_map[func_name](**args) if args else tool_map[func_name]()
-                        print(f"🔧 Tool executed: {func_name}")
-                        chat.append(tool_result(str(result)))
-                    except Exception as e:
-                        print(f"🔧 Tool error {func_name}: {e}")
-                        chat.append(tool_result(f"Tool error: {str(e)}"))
-            else:
-                # Final answer
-                final_content = getattr(response, 'content', str(response))
-                print("📥 Received final content from Grok, length:", len(final_content))
-                break
+        print("📤 Final response length:", len(full_response))
+        return full_response.strip() or "**Grok returned empty response**"
 
-        return final_content if final_content.strip() else "**Empty response from Grok**"
     except Exception as e:
         print(f"❌ call_grok failed: {traceback.format_exc()}")
         return f"❌ Grok API error: {str(e)}"
@@ -166,7 +149,7 @@ async def full_report():
         report = await call_grok(prompt)
         print("📤 Report generated, length:", len(report))
         await send_report(report)
-        print("✅ Report sent to Telegram")
+        print("✅ Report sent to Telegram successfully")
     except Exception as e:
         print(f"❌ full_report failed: {traceback.format_exc()}")
         await send_alert(f"❌ Report generation failed: {str(e)}")
