@@ -76,14 +76,20 @@ async def telegram_webhook(request: Request):
         prefs = get_user_prefs(user_id)
 
         # Special Dhan commands
-        if text in ["/portfolio", "portfolio", "holdings", "positions"]:
+        if text == "/portfolio" or "portfolio" in text or "holdings" in text or "positions" in text:
             data = get_dhan_portfolio()
-            await send_alert(f"📊 **Live Dhan Portfolio & Positions:**\n{data}")
+            if "HOLDING_ERROR" in data or "No holdings available" in data:
+                await send_alert("⚠️ Dhan returned HOLDING_ERROR (DH-1111).\nThis usually means the Access Token is in Sandbox mode or needs regeneration.\n\nPlease regenerate your token in **Live mode** and update env vars.")
+            else:
+                await send_alert(f"📊 **Your Live Dhan Portfolio & Positions:**\n{data}")
             return {"status": "ok"}
 
-        if text in ["/tradehistory", "trade history", "orders", "history"]:
+        if text == "/tradehistory" or "trade history" in text or "orders" in text or "history" in text:
             data = get_trade_history()
-            await send_alert(f"📜 **Dhan Trade / Order History:**\n{data}")
+            if "Error" in data:
+                await send_alert(f"📜 **Trade History:**\n{data}\n\nIf empty, regenerate token in Live mode.")
+            else:
+                await send_alert(f"📜 **Your Dhan Trade / Order History:**\n{data}")
             return {"status": "ok"}
 
         if text.startswith("/quote"):
