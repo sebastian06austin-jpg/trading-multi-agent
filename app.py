@@ -22,7 +22,7 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(full_report, 'cron', hour=12, minute=30)  # 6 PM IST
     scheduler.add_job(sunday_self_review, 'cron', day_of_week='sun', hour=9, minute=0)
     scheduler.start()
-    print("🚀 MOST ADVANCED SYSTEM LIVE — All features active")
+    print("🚀 ULTIMATE SYSTEM LIVE — Full Dhan + TradingView + Memory + Postback")
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -36,14 +36,27 @@ async def trigger_report():
     await full_report()
     return {"status": "✅ SUCCESS!"}
 
-# TradingView webhook
+# TradingView Webhook
 @app.post("/tv-webhook")
 async def tv_webhook(request: Request):
     data = await request.json()
     await send_alert(f"📢 TradingView Alert: {data.get('message', 'New signal')}")
     return {"status": "received"}
 
-# Telegram Webhook (stable)
+# Dhan Postback (real-time order updates)
+@app.post("/dhan-postback")
+async def dhan_postback(request: Request):
+    try:
+        data = await request.json()
+        print("📨 Dhan Postback Received:", json.dumps(data, indent=2))
+        if data.get("orderStatus") in ["TRADED", "REJECTED", "CANCELLED", "PENDING"]:
+            await send_alert(f"📨 **Dhan Order Update:**\n{json.dumps(data, indent=2, default=str)}")
+        return {"status": "received"}
+    except Exception as e:
+        print("Dhan postback error:", str(e))
+        return {"status": "received"}
+
+# Telegram Webhook (Grok-like chat + commands)
 @app.post("/telegram-webhook")
 async def telegram_webhook(request: Request):
     try:
@@ -57,15 +70,15 @@ async def telegram_webhook(request: Request):
         save_message(user_id, "user", text)
         prefs = get_user_prefs(user_id)
 
-        # === DIRECT DHAN ACCESS ===
-        if text == "/portfolio" or "portfolio" in text or "holdings" in text or "positions" in text:
+        # Commands
+        if text == "/portfolio" or "portfolio" in text:
             data = get_dhan_portfolio()
-            await send_alert(f"📊 **Your Live Dhan Portfolio & Positions:**\n{data}")
+            await send_alert(f"📊 **Your Live Dhan Portfolio:**\n{data}")
             return {"status": "ok"}
 
-        if text == "/tradehistory" or "trade history" in text or "orders" in text or "history" in text:
+        if text == "/tradehistory" or "history" in text or "orders" in text:
             data = get_trade_history()
-            await send_alert(f"📜 **Your Dhan Trade / Order History:**\n{data}")
+            await send_alert(f"📜 **Your Dhan Trade History:**\n{data}")
             return {"status": "ok"}
 
         if text.startswith("/quote"):
@@ -74,10 +87,17 @@ async def telegram_webhook(request: Request):
             await send_alert(f"📈 Live Quote for {symbol}:\n{data}")
             return {"status": "ok"}
 
-        # === NORMAL GROK CHAT (with live Dhan data injected) ===
+        # Auto preference update
+        if "risk" in text:
+            risk = "low" if "low" in text else "high" if "high" in text else "medium"
+            set_user_pref(user_id, "risk_level", risk)
+            await send_alert(f"✅ Risk level updated to **{risk}**")
+            return {"status": "ok"}
+
+        # Normal Grok-like chat with live Dhan data
         dhan_data = get_dhan_portfolio()
         history = get_user_history(user_id)
-        system = f"You are Grok. You have full access to the user's real Dhan account data. Current Dhan portfolio: {dhan_data}. User preferences: {json.dumps(prefs)}. Be helpful, trading-focused."
+        system = f"You are Grok. You have full real-time access to the user's Dhan account. Current portfolio: {dhan_data}. User preferences: {json.dumps(prefs)}. Be helpful, trading-focused, and fun."
         reply = await call_grok(f"{system}\n\n{text}")
         save_message(user_id, "assistant", reply)
         await send_alert(reply)
@@ -87,22 +107,6 @@ async def telegram_webhook(request: Request):
         print("Webhook error:", str(e))
         return {"status": "ok"}
 
-@app.post("/dhan-postback")
-async def dhan_postback(request: Request):
-    try:
-        data = await request.json()
-        print("📨 Dhan Postback Received:", json.dumps(data, indent=2))
-        
-        # Optional: Forward important updates to Telegram
-        if data.get("orderStatus") in ["TRADED", "REJECTED", "CANCELLED"]:
-            await send_alert(f"📨 Dhan Order Update:\n{json.dumps(data, indent=2)}")
-        
-        return {"status": "received"}
-    except Exception as e:
-        print("Dhan postback error:", str(e))
-        return {"status": "received"}
-        
-        
 async def call_grok(prompt: str):
     response = client.chat.completions.create(
         model=GROK_MODEL,
@@ -113,12 +117,12 @@ async def call_grok(prompt: str):
 
 async def full_report():
     dhan_data = get_dhan_portfolio()
-    prompt = f"Full analysis at {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%Y-%m-%d %H:%M IST')}. Use live Dhan data: {dhan_data}. Include Stocks, Commodities, ETFs, Crypto with precise recommendations + long Educator lesson + TradingView links."
+    prompt = f"Full analysis at {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%Y-%m-%d %H:%M IST')}. Use live Dhan data: {dhan_data}. Include Stocks, Commodities, ETFs, Crypto with precise recommendations + long Educator lesson + TradingView links + Dhan notes."
     report = await call_grok(prompt)
     await send_report(report)
 
 async def sunday_self_review():
-    review = await call_grok("Sunday self-review of last week")
+    review = await call_grok("Sunday self-review of last week signals, lessons, improvements, and portfolio performance.")
     await send_report(f"📅 SUNDAY SELF-REVIEW\n\n{review}")
 
 if __name__ == "__main__":
