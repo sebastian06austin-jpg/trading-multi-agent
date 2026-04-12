@@ -89,35 +89,20 @@ async def telegram_webhook(request: Request):
         save_message(user_id, "user", text)
         prefs = get_user_prefs(user_id)
 
-        # Special Dhan commands
-
+        # === RAW DHAN DEBUG COMMANDS ===
         if text == "/portfolio" or "portfolio" in text or "holdings" in text or "positions" in text:
             data = get_dhan_portfolio()
-            await send_alert(f"📊 **Raw Dhan Response (Portfolio):** \n{data}")
+            await send_alert(f"📊 **RAW Dhan Portfolio Response:**\n{data}")
             return {"status": "ok"}
 
         if text == "/tradehistory" or "trade history" in text or "orders" in text or "history" in text:
             data = get_trade_history()
-            await send_alert(f"📜 **Raw Dhan Response (Trade History):** \n{data}")
+            await send_alert(f"📜 **RAW Dhan Trade History Response:**\n{data}")
             return {"status": "ok"}
 
-        if text.startswith("/quote"):
-            symbol = text.split()[-1].upper() if len(text.split()) > 1 else "RELIANCE"
-            data = get_dhan_live_quote(symbol)
-            await send_alert(f"📈 Live Quote for {symbol}:\n{data}")
-            return {"status": "ok"}
-
-        # Auto preference
-        if "risk" in text:
-            risk = "low" if "low" in text else "high" if "high" in text else "medium"
-            set_user_pref(user_id, "risk_level", risk)
-            await send_alert(f"✅ Risk level updated to **{risk}**")
-            return {"status": "ok"}
-
-        # Normal Grok chat with live Dhan data
-        dhan_data = get_dhan_portfolio()
+        # === NORMAL CHAT ===
         history = get_user_history(user_id)
-        system = f"You are Grok. You have full real-time access to the user's Dhan account. Current portfolio: {dhan_data}. User preferences: {json.dumps(prefs)}. Be helpful, trading-focused, and fun."
+        system = f"You are Grok. User preferences: {json.dumps(prefs)}. Be helpful, trading-focused."
         reply = await call_grok(f"{system}\n\n{text}")
         save_message(user_id, "assistant", reply)
         await send_alert(reply)
@@ -126,6 +111,7 @@ async def telegram_webhook(request: Request):
     except Exception as e:
         print("Webhook error:", str(e))
         return {"status": "ok"}
+        
 
 async def call_grok(prompt: str):
     response = client.chat.completions.create(
