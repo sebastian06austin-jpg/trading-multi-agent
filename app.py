@@ -89,19 +89,27 @@ async def telegram_webhook(request: Request):
         save_message(user_id, "user", text)
         prefs = get_user_prefs(user_id)
 
+        # === DHAN COMMANDS (RAW REAL DATA ONLY) ===
         if text == "/portfolio" or "portfolio" in text or "holdings" in text or "positions" in text:
             data = get_dhan_portfolio()
-            await send_alert(f"📊 **RAW Dhan Portfolio:**\n{data}")
+            await send_alert(f"📊 **RAW Live Dhan Portfolio Response:**\n{data}")
             return {"status": "ok"}
 
         if text == "/tradehistory" or "trade history" in text or "orders" in text or "history" in text:
             data = get_trade_history()
-            await send_alert(f"📜 **RAW Dhan Trade History:**\n{data}")
+            await send_alert(f"📜 **RAW Live Dhan Trade History Response:**\n{data}")
             return {"status": "ok"}
 
-        # Normal chat — no simulation
+        if text.startswith("/quote"):
+            symbol = text.split()[-1].upper() if len(text.split()) > 1 else "RELIANCE"
+            data = get_dhan_live_quote(symbol)
+            await send_alert(f"📈 Live Quote for {symbol}:\n{data}")
+            return {"status": "ok"}
+
+        # === NORMAL GROK CHAT (with live Dhan data injected) ===
+        dhan_data = get_dhan_portfolio()
         history = get_user_history(user_id)
-        system = f"You are Grok. User preferences: {json.dumps(prefs)}. Be helpful, trading-focused. Use real Dhan data only."
+        system = f"You are Grok. You have full real-time access to the user's Dhan account. Current portfolio: {dhan_data}. User preferences: {json.dumps(prefs)}. Be helpful, trading-focused."
         reply = await call_grok(f"{system}\n\n{text}")
         save_message(user_id, "assistant", reply)
         await send_alert(reply)
