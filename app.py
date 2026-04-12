@@ -89,15 +89,18 @@ async def telegram_webhook(request: Request):
         save_message(user_id, "user", text)
         prefs = get_user_prefs(user_id)
 
-        # === DHAN COMMANDS (RAW REAL DATA ONLY) ===
+        # === DHAN COMMANDS (clean & user-friendly) ===
         if text == "/portfolio" or "portfolio" in text or "holdings" in text or "positions" in text:
             data = get_dhan_portfolio()
-            await send_alert(f"📊 **RAW Live Dhan Portfolio Response:**\n{data}")
+            if "HOLDING_ERROR" in data or "No holdings available" in data:
+                await send_alert("⚠️ **Dhan API Error (DH-1111)**\nNo holdings/positions visible yet.\nThis is common with new tokens.\n\nYour account may need more activity or a fresh Live token.\n\nFunds data is available though.")
+            else:
+                await send_alert(f"📊 **Your Live Dhan Portfolio:**\n{data}")
             return {"status": "ok"}
 
         if text == "/tradehistory" or "trade history" in text or "orders" in text or "history" in text:
             data = get_trade_history()
-            await send_alert(f"📜 **RAW Live Dhan Trade History Response:**\n{data}")
+            await send_alert(f"📜 **Your Dhan Trade History:**\n{data}")
             return {"status": "ok"}
 
         if text.startswith("/quote"):
@@ -109,7 +112,7 @@ async def telegram_webhook(request: Request):
         # === NORMAL GROK CHAT (with live Dhan data injected) ===
         dhan_data = get_dhan_portfolio()
         history = get_user_history(user_id)
-        system = f"You are Grok. You have full real-time access to the user's Dhan account. Current portfolio: {dhan_data}. User preferences: {json.dumps(prefs)}. Be helpful, trading-focused."
+        system = f"You are Grok. You have real-time access to the user's Dhan account. Current portfolio data: {dhan_data}. User preferences: {json.dumps(prefs)}. Be helpful, trading-focused."
         reply = await call_grok(f"{system}\n\n{text}")
         save_message(user_id, "assistant", reply)
         await send_alert(reply)
