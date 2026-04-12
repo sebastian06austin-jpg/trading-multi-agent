@@ -13,7 +13,7 @@ from database import get_user_prefs, set_user_pref, save_message, get_user_histo
 from dhan_tools import get_dhan_live_quote, get_dhan_portfolio, get_trade_history
 
 client = OpenAI(api_key=os.getenv("XAI_API_KEY"), base_url="https://api.x.ai/v1")
-GROK_MODEL = "grok-4.20-multi-agent-0309"   # ← Your requested powerful multi-agent model
+GROK_MODEL = "grok-beta"   # Stable model that supports tool calling (multi-agent models are restricted by xAI)
 
 tool_map = {
     "get_dhan_live_quote": get_dhan_live_quote,
@@ -28,7 +28,7 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(full_report, 'cron', hour=12, minute=30)
     scheduler.add_job(sunday_self_review, 'cron', day_of_week='sun', hour=10, minute=0)
     scheduler.start()
-    print(f"🚀 GROK 4.20 MULTI-AGENT + REAL TOOLS LIVE → Using {GROK_MODEL}")
+    print(f"🚀 GROK MULTI-AGENT TOOL ORCHESTRATION SYSTEM LIVE → Using {GROK_MODEL}")
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -48,7 +48,7 @@ async def reset_database():
         import os
         if os.path.exists("bot_memory.db"):
             os.remove("bot_memory.db")
-            await send_alert("🗑️ Database & all chat history cleared successfully.")
+            await send_alert("🗑️ Database & all chat history cleared successfully. Bot restarted fresh.")
             print("✅ Database deleted")
         else:
             await send_alert("✅ Database was already clean.")
@@ -104,7 +104,6 @@ async def telegram_webhook(request: Request):
             await send_alert(f"📈 Live Quote for {symbol}:\n{data}")
             return {"status": "ok"}
 
-        # Multi-Agent + Prompt-based Tool Calling
         dhan_data = get_dhan_portfolio()
         system = f"""You are Grok 4.20 Multi-Agent — truth-seeking, highly intelligent, with deep knowledge of finance, macroeconomics, valuation, risk management, behavioral finance, SEBI regulations, and Indian/global markets.
 You have full real-time access to the user's Dhan account. Current portfolio: {dhan_data}.
@@ -127,7 +126,7 @@ After you get the tool result, give your final answer."""
 async def call_grok(prompt: str):
     messages = [{"role": "user", "content": prompt}]
     
-    for _ in range(6):  # Max 6 tool rounds
+    for _ in range(6):
         response = client.chat.completions.create(
             model=GROK_MODEL,
             messages=messages,
@@ -136,7 +135,6 @@ async def call_grok(prompt: str):
         message_content = response.choices[0].message.content
         messages.append({"role": "assistant", "content": message_content})
 
-        # Parse if model wants to call a tool
         if "{" in message_content and "tool" in message_content.lower():
             try:
                 start = message_content.find("{")
@@ -148,11 +146,10 @@ async def call_grok(prompt: str):
                     result = tool_map[func_name](**args) if args else tool_map[func_name]()
                     messages.append({"role": "tool", "content": str(result)})
                     continue
-            except:
-                pass
-        
-        # If no tool call, this is the final answer
-        return message_content
+            except Exception as e:
+                print("Tool parsing error:", str(e))
+        else:
+            return message_content
 
     return messages[-1]["content"]
 
