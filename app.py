@@ -57,7 +57,7 @@ async def telegram_webhook(request: Request):
         save_message(user_id, "user", text)
         prefs = get_user_prefs(user_id)
 
-        # === DIRECT DHAN COMMANDS (this fixes the problem) ===
+        # === DIRECT DHAN ACCESS ===
         if text == "/portfolio" or "portfolio" in text or "holdings" in text or "positions" in text:
             data = get_dhan_portfolio()
             await send_alert(f"📊 **Your Live Dhan Portfolio & Positions:**\n{data}")
@@ -74,16 +74,10 @@ async def telegram_webhook(request: Request):
             await send_alert(f"📈 Live Quote for {symbol}:\n{data}")
             return {"status": "ok"}
 
-        # === AUTO PREFERENCE UPDATE ===
-        if "risk" in text:
-            risk = "low" if "low" in text else "high" if "high" in text else "medium"
-            set_user_pref(user_id, "risk_level", risk)
-            await send_alert(f"✅ Risk level updated to **{risk}**")
-            return {"status": "ok"}
-
-        # === NORMAL GROK CHAT (old agent logic preserved) ===
+        # === NORMAL GROK CHAT (with live Dhan data injected) ===
+        dhan_data = get_dhan_portfolio()
         history = get_user_history(user_id)
-        system = f"You are Grok. User preferences: {json.dumps(prefs)}. Be helpful, trading-focused. Use Dhan tools when user asks about portfolio, positions, or trade history."
+        system = f"You are Grok. You have full access to the user's real Dhan account data. Current Dhan portfolio: {dhan_data}. User preferences: {json.dumps(prefs)}. Be helpful, trading-focused."
         reply = await call_grok(f"{system}\n\n{text}")
         save_message(user_id, "assistant", reply)
         await send_alert(reply)
@@ -92,6 +86,7 @@ async def telegram_webhook(request: Request):
     except Exception as e:
         print("Webhook error:", str(e))
         return {"status": "ok"}
+        
 async def call_grok(prompt: str):
     response = client.chat.completions.create(
         model=GROK_MODEL,
