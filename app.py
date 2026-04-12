@@ -1,11 +1,11 @@
 from fastapi import FastAPI, Request
 from contextlib import asynccontextmanager
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-import asyncio, json, os, io
+import asyncio, json, os, io, traceback
 from datetime import datetime
 import pytz
-from xai_sdk import xai_sdk
-from openai import OpenAI
+from xai_sdk import Client
+from xai_sdk.chat import user, tool_result
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -13,8 +13,15 @@ from telegram_sender import send_report, send_alert, send_chart_image
 from database import get_user_prefs, set_user_pref, save_message, get_user_history
 from dhan_tools import get_dhan_live_quote, get_dhan_portfolio, get_trade_history
 
-client = OpenAI(api_key=os.getenv("XAI_API_KEY"), base_url="https://api.x.ai/v1")
-GROK_MODEL = "grok-4.20-multi-agent-0309"   # Your requested most powerful model
+# ====================== BULLETPROOF INITIALIZATION ======================
+try:
+    client = Client(api_key=os.getenv("XAI_API_KEY"))
+    print("✅ xAI SDK initialized successfully")
+except Exception as e:
+    print(f"❌ xAI SDK init failed: {e}")
+    client = None
+
+GROK_MODEL = "grok-4.20-multi-agent-0309"
 
 tool_map = {
     "get_dhan_live_quote": get_dhan_live_quote,
@@ -29,7 +36,7 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(full_report, 'cron', hour=12, minute=30)
     scheduler.add_job(sunday_self_review, 'cron', day_of_week='sun', hour=10, minute=0)
     scheduler.start()
-    print(f"🚀 GROK 4.20 MULTI-AGENT + OFFICIAL RESPONSES API LIVE → Using {GROK_MODEL}")
+    print(f"🚀 BULLETPROOF GROK 4.20 MULTI-AGENT SYSTEM LIVE → Using {GROK_MODEL}")
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -40,27 +47,36 @@ async def health():
 
 @app.get("/trigger-report")
 async def trigger_report():
-    await full_report()
-    return {"status": "✅ SUCCESS!"}
+    try:
+        await full_report()
+        return {"status": "✅ SUCCESS!"}
+    except Exception as e:
+        print(f"❌ /trigger-report failed: {traceback.format_exc()}")
+        return {"status": "❌ Error", "detail": str(e)}
 
 @app.get("/reset-db")
 async def reset_database():
     try:
-        import os
         if os.path.exists("bot_memory.db"):
             os.remove("bot_memory.db")
             await send_alert("🗑️ Database & all chat history cleared successfully.")
+            print("✅ Database deleted")
         else:
             await send_alert("✅ Database was already clean.")
         return {"status": "Database reset complete."}
     except Exception as e:
+        print(f"❌ /reset-db failed: {traceback.format_exc()}")
         return {"status": f"Error: {str(e)}"}
 
 @app.post("/tv-webhook")
 async def tv_webhook(request: Request):
-    data = await request.json()
-    await send_alert(f"📢 TradingView Alert: {data.get('message', 'New signal')}")
-    return {"status": "received"}
+    try:
+        data = await request.json()
+        await send_alert(f"📢 TradingView Alert: {data.get('message', 'New signal')}")
+        return {"status": "received"}
+    except Exception as e:
+        print(f"❌ TV webhook error: {traceback.format_exc()}")
+        return {"status": "received"}
 
 @app.post("/dhan-postback")
 async def dhan_postback(request: Request):
@@ -72,7 +88,7 @@ async def dhan_postback(request: Request):
             await send_alert(f"📨 Dhan Order Update\nSymbol: {symbol}\nStatus: {status}")
         return {"status": "received"}
     except Exception as e:
-        print("Dhan postback error:", str(e))
+        print(f"❌ Dhan postback error: {traceback.format_exc()}")
         return {"status": "received"}
 
 @app.post("/telegram-webhook")
@@ -88,12 +104,13 @@ async def telegram_webhook(request: Request):
         save_message(user_id, "user", text)
         prefs = get_user_prefs(user_id)
 
-        if text == "/portfolio" or "portfolio" in text or "holdings" in text or "positions" in text:
+        # Direct commands (safe)
+        if text in ["/portfolio", "portfolio", "holdings", "positions"]:
             data = get_dhan_portfolio()
             await send_alert(f"📊 **Live Dhan Portfolio:**\n{data}")
             return {"status": "ok"}
 
-        if text == "/tradehistory" or "trade history" in text or "orders" in text or "history" in text:
+        if text in ["/tradehistory", "trade history", "orders", "history"]:
             data = get_trade_history()
             await send_alert(f"📜 **Dhan Trade History:**\n{data}")
             return {"status": "ok"}
@@ -104,9 +121,9 @@ async def telegram_webhook(request: Request):
             await send_alert(f"📈 Live Quote for {symbol}:\n{data}")
             return {"status": "ok"}
 
-        # Official Responses API + Multi-Agent Tool Orchestration
+        # Multi-Agent Tool Orchestration
         dhan_data = get_dhan_portfolio()
-        system = f"""You are Grok 4.20 Multi-Agent — the most powerful truth-seeking model.
+        system = f"""You are Grok 4.20 Multi-Agent — truth-seeking, highly intelligent, with deep knowledge of finance, macroeconomics, valuation, risk management, behavioral finance, SEBI regulations, and Indian/global markets.
 You have full real-time access to the user's Dhan account. Current portfolio: {dhan_data}.
 User preferences: {json.dumps(prefs)}.
 
@@ -115,7 +132,7 @@ When you need data, output ONLY a JSON object like this:
 or
 {{"tool": "get_dhan_live_quote", "symbol": "RELIANCE"}}
 
-After you receive the tool result, give your final intelligent answer with precise recommendations."""
+After you receive the tool result, give your final intelligent answer."""
 
         reply = await call_grok(f"{system}\n\nUser: {text}")
         save_message(user_id, "assistant", reply)
@@ -123,49 +140,53 @@ After you receive the tool result, give your final intelligent answer with preci
         return {"status": "ok"}
 
     except Exception as e:
-        print("Webhook error:", str(e))
+        print(f"❌ Telegram webhook error: {traceback.format_exc()}")
         return {"status": "ok"}
 
 async def call_grok(prompt: str):
-    messages = [{"role": "user", "content": prompt}]
-    
-    for _ in range(6):  # Max tool rounds
-        response = client.responses.create(          # ← Official Responses API
-            model=GROK_MODEL,
-            input=messages,
-            temperature=0.7
-        )
-        content = response.output[-1].content if hasattr(response.output[-1], 'content') else str(response.output[-1])
-        messages.append({"role": "assistant", "content": content})
+    if client is None:
+        return "❌ xAI SDK not initialized. Check your API key."
+    try:
+        chat = client.chat.create(model=GROK_MODEL)
+        chat.append(user(prompt))
 
-        # Detect tool call (JSON from model)
-        if "{" in content and "tool" in content.lower():
-            try:
-                start = content.find("{")
-                end = content.rfind("}") + 1
-                tool_call = json.loads(content[start:end])
-                func_name = tool_call.get("tool")
-                if func_name in tool_map:
-                    args = {k: v for k, v in tool_call.items() if k != "tool"}
-                    result = tool_map[func_name](**args) if args else tool_map[func_name]()
-                    messages.append({"role": "tool", "content": str(result)})
-                    continue
-            except:
-                pass
-        else:
-            return content  # Final answer
+        for response, chunk in chat.stream():
+            if hasattr(chunk, 'tool_calls') and chunk.tool_calls:
+                for tool_call in chunk.tool_calls:
+                    func_name = tool_call.function.name
+                    try:
+                        args = json.loads(tool_call.function.arguments) if tool_call.function.arguments else {}
+                        if func_name in tool_map:
+                            result = tool_map[func_name](**args) if args else tool_map[func_name]()
+                            chat.append(tool_result(str(result)))
+                    except Exception as e:
+                        print(f"Tool execution error {func_name}: {e}")
+                        chat.append(tool_result(f"Tool error: {str(e)}"))
+            else:
+                return response.content  # Final answer
 
-    return messages[-1]["content"]
+        return "No final response generated."
+    except Exception as e:
+        print(f"❌ call_grok failed: {traceback.format_exc()}")
+        return f"❌ Grok API error: {str(e)}"
 
 async def full_report():
-    dhan_data = get_dhan_portfolio()
-    prompt = f"Full analysis at {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%Y-%m-%d %H:%M IST')}. Use live Dhan data: {dhan_data}. Include Stocks, Commodities, ETFs, Crypto with precise recommendations + long Educator lesson + TradingView links."
-    report = await call_grok(prompt)
-    await send_report(report)
+    try:
+        dhan_data = get_dhan_portfolio()
+        prompt = f"Full analysis at {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%Y-%m-%d %H:%M IST')}. Use live Dhan data: {dhan_data}. Include Stocks, Commodities, ETFs, Crypto with precise recommendations + long Educator lesson + TradingView links."
+        report = await call_grok(prompt)
+        await send_report(report)
+    except Exception as e:
+        print(f"❌ full_report failed: {traceback.format_exc()}")
+        await send_alert(f"❌ Report generation failed: {str(e)}")
 
 async def sunday_self_review():
-    review = await call_grok("Sunday self-review of last week signals, lessons, improvements, and portfolio performance.")
-    await send_report(f"📅 SUNDAY SELF-REVIEW\n\n{review}")
+    try:
+        review = await call_grok("Sunday self-review of last week signals, lessons, improvements, and portfolio performance.")
+        await send_report(f"📅 SUNDAY SELF-REVIEW\n\n{review}")
+    except Exception as e:
+        print(f"❌ sunday_self_review failed: {traceback.format_exc()}")
+        await send_alert(f"❌ Sunday review failed: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
