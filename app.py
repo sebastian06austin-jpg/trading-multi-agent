@@ -98,7 +98,6 @@ async def telegram_webhook(request: Request):
             await send_alert(f"📈 Live Quote for {symbol}:\n{data}")
             return {"status": "ok"}
 
-        # Multi-Agent Tool Orchestration
         dhan_data = get_dhan_portfolio()
         system = f"""You are Grok 4.20 Multi-Agent — truth-seeking, highly intelligent, with deep knowledge of finance, macroeconomics, valuation, risk management, behavioral finance, SEBI regulations, and Indian/global markets.
 You have full real-time access to the user's Dhan account. Current portfolio: {dhan_data}.
@@ -122,7 +121,7 @@ After you receive the tool result, give your final intelligent answer."""
 
 async def call_grok(prompt: str):
     if client is None:
-        return "❌ xAI SDK not initialized. Check API key."
+        return "❌ xAI SDK not initialized."
     try:
         print("📤 Calling Grok with prompt length:", len(prompt))
         chat = client.chat.create(model=GROK_MODEL)
@@ -131,12 +130,13 @@ async def call_grok(prompt: str):
         final_content = "**No response from model**"
 
         for item in chat.stream():
-            # Handle tuple or single object from SDK
+            # Safe handling for tuple or single object
             if isinstance(item, tuple):
-                response = item[0]      # first element is the response
+                response = item[0] if len(item) > 0 else item
             else:
                 response = item
 
+            # Tool call handling
             if hasattr(response, 'tool_calls') and response.tool_calls:
                 for tool_call in response.tool_calls:
                     func_name = tool_call.function.name
@@ -149,9 +149,11 @@ async def call_grok(prompt: str):
                         print(f"🔧 Tool error {func_name}: {e}")
                         chat.append(tool_result(f"Tool error: {str(e)}"))
             else:
-                # Final answer
-                final_content = getattr(response, 'content', str(response))
-                print("📥 Received final content from Grok (length):", len(final_content))
+                # Final answer - safe content extraction
+                final_content = getattr(response, 'content', None)
+                if final_content is None:
+                    final_content = str(response)
+                print("📥 Received final content from Grok, length:", len(final_content))
                 break
 
         return final_content
@@ -167,7 +169,7 @@ async def full_report():
         report = await call_grok(prompt)
         print("📤 Report generated, length:", len(report))
         await send_report(report)
-        print("✅ Report sent to Telegram")
+        print("✅ Report sent to Telegram successfully")
     except Exception as e:
         print(f"❌ full_report failed: {traceback.format_exc()}")
         await send_alert(f"❌ Report generation failed: {str(e)}")
