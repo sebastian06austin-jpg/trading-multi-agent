@@ -1,5 +1,4 @@
 xai-sdk
-llvm
 llvmlite
 numba
 fastapi
