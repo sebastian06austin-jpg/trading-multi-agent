@@ -18,9 +18,9 @@ GROK_MODEL = os.getenv("GROK_MODEL", "grok-4.20-multi-agent-0309")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
-    scheduler.add_job(full_report, 'cron', hour=2, minute=30)
-    scheduler.add_job(full_report, 'cron', hour=12, minute=30)
-    scheduler.add_job(sunday_self_review, 'cron', day_of_week='sun', hour=9, minute=0)
+    scheduler.add_job(full_report, 'cron', hour=9, minute=30)
+    scheduler.add_job(full_report, 'cron', hour=3, minute=15)
+    scheduler.add_job(sunday_self_review, 'cron', day_of_week='sun', hour=10, minute=0)
     scheduler.start()
     print("🚀 FINAL ULTIMATE SYSTEM LIVE — Full Dhan + TradingView + Memory + Postback")
     yield
