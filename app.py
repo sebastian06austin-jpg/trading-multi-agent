@@ -13,16 +13,56 @@ from database import get_user_prefs, set_user_pref, save_message, get_user_histo
 from dhan_tools import get_dhan_live_quote, get_dhan_portfolio, get_trade_history
 
 client = OpenAI(api_key=os.getenv("XAI_API_KEY"), base_url="https://api.x.ai/v1")
-GROK_MODEL = os.getenv("GROK_MODEL", "grok-4.20-multi-agent-0309")  # True multi-agent model
+GROK_MODEL = os.getenv("GROK_MODEL", "grok-4.20-multi-agent-0309")
+
+# ====================== ADVANCED TOOL SET FOR MULTI-AGENT ======================
+tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_dhan_live_quote",
+            "description": "Get real-time price quote from Dhan for any symbol (NSE/BSE)",
+            "parameters": {
+                "type": "object",
+                "properties": {"symbol": {"type": "string", "description": "e.g. RELIANCE.NS"}},
+                "required": ["symbol"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_dhan_portfolio",
+            "description": "Get user's live holdings, positions, and portfolio value from Dhan",
+            "parameters": {"type": "object", "properties": {}}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_trade_history",
+            "description": "Get user's complete trade and order history from Dhan",
+            "parameters": {"type": "object", "properties": {}}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "generate_chart",
+            "description": "Generate and send a chart image to Telegram",
+            "parameters": {"type": "object", "properties": {}}
+        }
+    }
+]
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
-    scheduler.add_job(full_report, 'cron', hour=2, minute=30)   # 8 AM IST
-    scheduler.add_job(full_report, 'cron', hour=12, minute=30)  # 6 PM IST
+    scheduler.add_job(full_report, 'cron', hour=2, minute=30)
+    scheduler.add_job(full_report, 'cron', hour=12, minute=30)
     scheduler.add_job(sunday_self_review, 'cron', day_of_week='sun', hour=10, minute=0)
     scheduler.start()
-    print("🚀 ULTIMATE GROK 4.20 MULTI-AGENT SYSTEM LIVE")
+    print("🚀 GROK 4.20 MULTI-AGENT TRUTH-SEEKING SYSTEM LIVE")
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -50,14 +90,12 @@ async def reset_database():
     except Exception as e:
         return {"status": f"Error: {str(e)}"}
 
-# TradingView webhook
 @app.post("/tv-webhook")
 async def tv_webhook(request: Request):
     data = await request.json()
     await send_alert(f"📢 TradingView Alert: {data.get('message', 'New signal')}")
     return {"status": "received"}
 
-# Dhan Postback
 @app.post("/dhan-postback")
 async def dhan_postback(request: Request):
     try:
@@ -66,13 +104,13 @@ async def dhan_postback(request: Request):
         status = data.get("orderStatus", "")
         symbol = data.get("tradingSymbol", "Unknown")
         if status in ["TRADED", "REJECTED", "CANCELLED", "PENDING"]:
-            await send_alert(f"📨 Dhan Order Update\nSymbol: {symbol}\nStatus: {status}\n{json.dumps(data, default=str)}")
+            await send_alert(f"📨 Dhan Order Update\nSymbol: {symbol}\nStatus: {status}")
         return {"status": "received"}
     except Exception as e:
         print("Dhan postback error:", str(e))
         return {"status": "received"}
 
-# Telegram Webhook (Grok-like conversational bot)
+# Telegram Webhook (conversational + tool calling)
 @app.post("/telegram-webhook")
 async def telegram_webhook(request: Request):
     try:
@@ -102,10 +140,14 @@ async def telegram_webhook(request: Request):
             await send_alert(f"📈 Live Quote for {symbol}:\n{data}")
             return {"status": "ok"}
 
-        # Grok-like chat with live Dhan data
+        # Advanced Grok chat with tool calling
         dhan_data = get_dhan_portfolio()
         history = get_user_history(user_id)
-        system = f"You are Grok 4.20 Multi-Agent. You have full real-time access to the user's Dhan account. Current portfolio: {dhan_data}. User preferences: {json.dumps(prefs)}. Be helpful, trading-focused, and fun."
+        system = f"""You are Grok 4.20 Multi-Agent — truth-seeking, highly intelligent, with deep knowledge of business, finance, macroeconomics, valuation, risk management, behavioral finance, SEBI regulations, and Indian/global markets.
+You have full real-time access to the user's Dhan account. Current portfolio: {dhan_data}.
+User preferences: {json.dumps(prefs)}.
+Always think step-by-step, use tools when needed, self-critique, and give precise, actionable, honest advice."""
+
         reply = await call_grok(f"{system}\n\n{text}")
         save_message(user_id, "assistant", reply)
         await send_alert(reply)
@@ -119,6 +161,8 @@ async def call_grok(prompt: str):
     response = client.chat.completions.create(
         model=GROK_MODEL,
         messages=[{"role": "user", "content": prompt}],
+        tools=tools,
+        tool_choice="auto",
         temperature=0.7
     )
     return response.choices[0].message.content
