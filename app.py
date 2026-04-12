@@ -13,7 +13,7 @@ from database import get_user_prefs, set_user_pref, save_message, get_user_histo
 from dhan_tools import get_dhan_live_quote, get_dhan_portfolio, get_trade_history
 
 client = OpenAI(api_key=os.getenv("XAI_API_KEY"), base_url="https://api.x.ai/v1")
-GROK_MODEL = "grok-beta"   # Stable model that supports tool calling (multi-agent models are restricted by xAI)
+GROK_MODEL = "grok-4.20-multi-agent-0309"   # Your requested most powerful model
 
 tool_map = {
     "get_dhan_live_quote": get_dhan_live_quote,
@@ -24,11 +24,11 @@ tool_map = {
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
-    scheduler.add_job(full_report, 'cron', hour=2, minute=30)
-    scheduler.add_job(full_report, 'cron', hour=12, minute=30)
+    scheduler.add_job(full_report, 'cron', hour=2, minute=30)   # 8 AM IST
+    scheduler.add_job(full_report, 'cron', hour=12, minute=30)  # 6 PM IST
     scheduler.add_job(sunday_self_review, 'cron', day_of_week='sun', hour=10, minute=0)
     scheduler.start()
-    print(f"🚀 GROK MULTI-AGENT TOOL ORCHESTRATION SYSTEM LIVE → Using {GROK_MODEL}")
+    print(f"🚀 GROK 4.20 MULTI-AGENT + REAL TOOLS LIVE → Using {GROK_MODEL}")
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -48,8 +48,7 @@ async def reset_database():
         import os
         if os.path.exists("bot_memory.db"):
             os.remove("bot_memory.db")
-            await send_alert("🗑️ Database & all chat history cleared successfully. Bot restarted fresh.")
-            print("✅ Database deleted")
+            await send_alert("🗑️ Database & all chat history cleared successfully.")
         else:
             await send_alert("✅ Database was already clean.")
         return {"status": "Database reset complete."}
@@ -104,15 +103,18 @@ async def telegram_webhook(request: Request):
             await send_alert(f"📈 Live Quote for {symbol}:\n{data}")
             return {"status": "ok"}
 
+        # Multi-Agent + Real Tool Orchestration (prompt-based)
         dhan_data = get_dhan_portfolio()
-        system = f"""You are Grok 4.20 Multi-Agent — truth-seeking, highly intelligent, with deep knowledge of finance, macroeconomics, valuation, risk management, behavioral finance, SEBI regulations, and Indian/global markets.
+        system = f"""You are Grok 4.20 Multi-Agent — the most powerful truth-seeking model.
 You have full real-time access to the user's Dhan account. Current portfolio: {dhan_data}.
 User preferences: {json.dumps(prefs)}.
-You can use tools by outputting ONLY a JSON object like this:
+
+When you need data, output ONLY a JSON object like this:
 {{"tool": "get_dhan_portfolio"}}
 or
 {{"tool": "get_dhan_live_quote", "symbol": "RELIANCE"}}
-After you get the tool result, give your final answer."""
+
+After you receive the tool result, give your final intelligent answer with precise recommendations."""
 
         reply = await call_grok(f"{system}\n\nUser: {text}")
         save_message(user_id, "assistant", reply)
@@ -126,30 +128,31 @@ After you get the tool result, give your final answer."""
 async def call_grok(prompt: str):
     messages = [{"role": "user", "content": prompt}]
     
-    for _ in range(6):
+    for _ in range(6):  # Max tool rounds
         response = client.chat.completions.create(
             model=GROK_MODEL,
             messages=messages,
             temperature=0.7
         )
-        message_content = response.choices[0].message.content
-        messages.append({"role": "assistant", "content": message_content})
+        content = response.choices[0].message.content
+        messages.append({"role": "assistant", "content": content})
 
-        if "{" in message_content and "tool" in message_content.lower():
+        # Detect tool call
+        if "{" in content and "tool" in content.lower():
             try:
-                start = message_content.find("{")
-                end = message_content.rfind("}") + 1
-                tool_call = json.loads(message_content[start:end])
+                start = content.find("{")
+                end = content.rfind("}") + 1
+                tool_call = json.loads(content[start:end])
                 func_name = tool_call.get("tool")
                 if func_name in tool_map:
                     args = {k: v for k, v in tool_call.items() if k != "tool"}
                     result = tool_map[func_name](**args) if args else tool_map[func_name]()
                     messages.append({"role": "tool", "content": str(result)})
                     continue
-            except Exception as e:
-                print("Tool parsing error:", str(e))
+            except:
+                pass
         else:
-            return message_content
+            return content  # Final answer
 
     return messages[-1]["content"]
 
