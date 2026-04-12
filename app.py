@@ -36,6 +36,20 @@ async def trigger_report():
     await full_report()
     return {"status": "✅ SUCCESS!"}
 
+@app.get("/reset-db")
+async def reset_database():
+    try:
+        import os
+        if os.path.exists("bot_memory.db"):
+            os.remove("bot_memory.db")
+            await send_alert("🗑️ Database & all chat history cleared successfully. Bot restarted fresh.")
+            print("✅ Database deleted and will be recreated on next interaction")
+        else:
+            await send_alert("✅ Database was already clean.")
+        return {"status": "Database reset complete. Starting fresh."}
+    except Exception as e:
+        return {"status": f"Error: {str(e)}"}
+
 # TradingView webhook
 @app.post("/tv-webhook")
 async def tv_webhook(request: Request):
