@@ -13,20 +13,16 @@ from database import get_user_prefs, set_user_pref, save_message, get_user_histo
 from dhan_tools import get_dhan_live_quote, get_dhan_portfolio, get_trade_history
 
 client = OpenAI(api_key=os.getenv("XAI_API_KEY"), base_url="https://api.x.ai/v1")
-GROK_MODEL = os.getenv("GROK_MODEL", "grok-4.20-reasoning")   # Stable model with tool calling
+GROK_MODEL = os.getenv("GROK_MODEL", "grok-beta")
 
-# Advanced Tool Set for Multi-Agent Orchestration
+# Tool definitions for multi-agent orchestration
 tools = [
     {
         "type": "function",
         "function": {
             "name": "get_dhan_live_quote",
             "description": "Get real-time price quote from Dhan",
-            "parameters": {
-                "type": "object",
-                "properties": {"symbol": {"type": "string"}},
-                "required": ["symbol"]
-            }
+            "parameters": {"type": "object", "properties": {"symbol": {"type": "string"}}, "required": ["symbol"]}
         }
     },
     {
@@ -47,14 +43,21 @@ tools = [
     }
 ]
 
+# Tool executor map
+tool_map = {
+    "get_dhan_live_quote": get_dhan_live_quote,
+    "get_dhan_portfolio": get_dhan_portfolio,
+    "get_trade_history": get_trade_history,
+}
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
-    scheduler.add_job(full_report, 'cron', hour=2, minute=30)
-    scheduler.add_job(full_report, 'cron', hour=12, minute=30)
+    scheduler.add_job(full_report, 'cron', hour=9, minute=30)   # 8 AM IST
+    scheduler.add_job(full_report, 'cron', hour=3, minute=15)  # 6 PM IST
     scheduler.add_job(sunday_self_review, 'cron', day_of_week='sun', hour=10, minute=0)
     scheduler.start()
-    print("🚀 GROK 4.20 MULTI-AGENT TRUTH-SEEKING SYSTEM LIVE")
+    print("🚀 GROK 4.20 MULTI-AGENT TOOL ORCHESTRATION SYSTEM LIVE")
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -68,6 +71,7 @@ async def trigger_report():
     await full_report()
     return {"status": "✅ SUCCESS!"}
 
+# ====================== NEW RESET-DB ENDPOINT ======================
 @app.get("/reset-db")
 async def reset_database():
     try:
@@ -81,6 +85,7 @@ async def reset_database():
         return {"status": "Database reset complete. Starting fresh."}
     except Exception as e:
         return {"status": f"Error: {str(e)}"}
+# ====================== END OF RESET-DB ======================
 
 @app.post("/tv-webhook")
 async def tv_webhook(request: Request):
@@ -92,7 +97,6 @@ async def tv_webhook(request: Request):
 async def dhan_postback(request: Request):
     try:
         data = await request.json()
-        print("📨 Dhan Postback:", json.dumps(data, indent=2))
         status = data.get("orderStatus", "")
         symbol = data.get("tradingSymbol", "Unknown")
         if status in ["TRADED", "REJECTED", "CANCELLED", "PENDING"]:
@@ -131,13 +135,13 @@ async def telegram_webhook(request: Request):
             await send_alert(f"📈 Live Quote for {symbol}:\n{data}")
             return {"status": "ok"}
 
-        # Multi-Agent Grok chat with tool calling
+        # Multi-agent chat with tool calling
         dhan_data = get_dhan_portfolio()
         history = get_user_history(user_id)
-        system = f"""You are Grok 4.20 Multi-Agent — truth-seeking, highly intelligent, with deep knowledge of finance, business, macroeconomics, valuation, risk management, behavioral finance, SEBI regulations, and Indian/global markets.
+        system = f"""You are Grok 4.20 Multi-Agent — truth-seeking, highly intelligent, with deep knowledge of finance, macroeconomics, valuation, risk management, behavioral finance, SEBI regulations, and Indian/global markets.
 You have full real-time access to the user's Dhan account. Current portfolio: {dhan_data}.
 User preferences: {json.dumps(prefs)}.
-Always think step-by-step, use tools when needed, self-critique, and give precise, actionable, honest advice."""
+Always think step-by-step, use tools when needed, self-critique your reasoning, and give precise, actionable, honest advice."""
 
         reply = await call_grok(f"{system}\n\n{text}")
         save_message(user_id, "assistant", reply)
@@ -149,14 +153,42 @@ Always think step-by-step, use tools when needed, self-critique, and give precis
         return {"status": "ok"}
 
 async def call_grok(prompt: str):
-    response = client.chat.completions.create(
-        model=GROK_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        tools=tools,
-        tool_choice="auto",
-        temperature=0.7
-    )
-    return response.choices[0].message.content
+    messages = [{"role": "user", "content": prompt}]
+    
+    for _ in range(5):  # Max 5 tool call rounds
+        response = client.chat.completions.create(
+            model=GROK_MODEL,
+            messages=messages,
+            tools=tools,
+            tool_choice="auto",
+            temperature=0.7
+        )
+        message = response.choices[0].message
+        messages.append(message)
+
+        if not message.tool_calls:
+            return message.content
+
+        # Execute tools
+        for tool_call in message.tool_calls:
+            func_name = tool_call.function.name
+            func_args = json.loads(tool_call.function.arguments)
+            if func_name in tool_map:
+                try:
+                    result = tool_map[func_name](**func_args) if func_args else tool_map[func_name]()
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": str(result)
+                    })
+                except Exception as e:
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": f"Tool error: {str(e)}"
+                    })
+
+    return messages[-1].content
 
 async def full_report():
     dhan_data = get_dhan_portfolio()
