@@ -13,7 +13,7 @@ from database import get_user_prefs, set_user_pref, save_message, get_user_histo
 from dhan_tools import get_dhan_live_quote, get_dhan_portfolio, get_trade_history
 
 client = OpenAI(api_key=os.getenv("XAI_API_KEY"), base_url="https://api.x.ai/v1")
-GROK_MODEL = os.getenv("GROK_MODEL", "grok-4.20-multi-agent-0309")   # Your requested multi-agent model
+GROK_MODEL = "grok-4.20-multi-agent-0309"   # ← Your requested powerful multi-agent model
 
 tool_map = {
     "get_dhan_live_quote": get_dhan_live_quote,
@@ -24,11 +24,11 @@ tool_map = {
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
-    scheduler.add_job(full_report, 'cron', hour=9, minute=30)
-    scheduler.add_job(full_report, 'cron', hour=3, minute=15)
+    scheduler.add_job(full_report, 'cron', hour=2, minute=30)
+    scheduler.add_job(full_report, 'cron', hour=12, minute=30)
     scheduler.add_job(sunday_self_review, 'cron', day_of_week='sun', hour=10, minute=0)
     scheduler.start()
-    print(f"🚀 GROK 4.20 MULTI-AGENT + REAL TOOLS SYSTEM LIVE → Using {GROK_MODEL}")
+    print(f"🚀 GROK 4.20 MULTI-AGENT + REAL TOOLS LIVE → Using {GROK_MODEL}")
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -48,7 +48,7 @@ async def reset_database():
         import os
         if os.path.exists("bot_memory.db"):
             os.remove("bot_memory.db")
-            await send_alert("🗑️ Database & all chat history cleared successfully. Bot restarted fresh.")
+            await send_alert("🗑️ Database & all chat history cleared successfully.")
             print("✅ Database deleted")
         else:
             await send_alert("✅ Database was already clean.")
@@ -104,15 +104,16 @@ async def telegram_webhook(request: Request):
             await send_alert(f"📈 Live Quote for {symbol}:\n{data}")
             return {"status": "ok"}
 
-        # Multi-Agent + Tool Orchestration
+        # Multi-Agent + Prompt-based Tool Calling
         dhan_data = get_dhan_portfolio()
-        history = get_user_history(user_id)
-        system = f"""You are Grok 4.20 Multi-Agent — truth-seeking, highly intelligent, with deep knowledge of finance, macro, valuation, risk, behavioral finance, SEBI rules, and Indian/global markets.
+        system = f"""You are Grok 4.20 Multi-Agent — truth-seeking, highly intelligent, with deep knowledge of finance, macroeconomics, valuation, risk management, behavioral finance, SEBI regulations, and Indian/global markets.
 You have full real-time access to the user's Dhan account. Current portfolio: {dhan_data}.
 User preferences: {json.dumps(prefs)}.
-You can use tools by outputting JSON in this exact format:
-{{"tool": "get_dhan_portfolio"}} or {{"tool": "get_dhan_live_quote", "symbol": "RELIANCE"}}
-Think step-by-step, use tools when needed, then give final answer."""
+You can use tools by outputting ONLY a JSON object like this:
+{{"tool": "get_dhan_portfolio"}}
+or
+{{"tool": "get_dhan_live_quote", "symbol": "RELIANCE"}}
+After you get the tool result, give your final answer."""
 
         reply = await call_grok(f"{system}\n\nUser: {text}")
         save_message(user_id, "assistant", reply)
@@ -126,19 +127,21 @@ Think step-by-step, use tools when needed, then give final answer."""
 async def call_grok(prompt: str):
     messages = [{"role": "user", "content": prompt}]
     
-    for _ in range(6):  # Max tool rounds
+    for _ in range(6):  # Max 6 tool rounds
         response = client.chat.completions.create(
             model=GROK_MODEL,
             messages=messages,
             temperature=0.7
         )
-        message = response.choices[0].message.content
-        messages.append({"role": "assistant", "content": message})
+        message_content = response.choices[0].message.content
+        messages.append({"role": "assistant", "content": message_content})
 
-        # Parse tool call if model wants one
-        if "{" in message and "tool" in message:
+        # Parse if model wants to call a tool
+        if "{" in message_content and "tool" in message_content.lower():
             try:
-                tool_call = json.loads(message[message.find("{"):message.rfind("}")+1])
+                start = message_content.find("{")
+                end = message_content.rfind("}") + 1
+                tool_call = json.loads(message_content[start:end])
                 func_name = tool_call.get("tool")
                 if func_name in tool_map:
                     args = {k: v for k, v in tool_call.items() if k != "tool"}
@@ -147,8 +150,9 @@ async def call_grok(prompt: str):
                     continue
             except:
                 pass
-        else:
-            return message  # Final answer
+        
+        # If no tool call, this is the final answer
+        return message_content
 
     return messages[-1]["content"]
 
