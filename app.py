@@ -1,150 +1,49 @@
-from fastapi import FastAPI, Request
-from contextlib import asynccontextmanager
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-import asyncio, json, os, io
+import sqlite3
+import json
 from datetime import datetime
-import pytz
-from openai import OpenAI
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-from telegram_sender import send_report, send_alert, send_chart_image
-from database import get_user_prefs, set_user_pref, save_message, get_user_history
-from dhan_tools import get_dhan_live_quote, get_dhan_portfolio, get_trade_history
+import os
 
-client = OpenAI(api_key=os.getenv("XAI_API_KEY"), base_url="https://api.x.ai/v1")
-GROK_MODEL = os.getenv("GROK_MODEL", "grok-4.20-multi-agent-0309")
+# Use /tmp folder which is writable on Render free tier
+DB_PATH = "/tmp/bot_memory.db"
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
-    scheduler.add_job(full_report, 'cron', hour=2, minute=30)
-    scheduler.add_job(full_report, 'cron', hour=12, minute=30)
-    scheduler.add_job(sunday_self_review, 'cron', day_of_week='sun', hour=9, minute=0)
-    scheduler.start()
-    print("🚀 FINAL ULTIMATE SYSTEM LIVE — Full Dhan + TradingView + Memory + Postback")
-    yield
+conn = sqlite3.connect(DB_PATH, check_same_thread=False)
 
-app = FastAPI(lifespan=lifespan)
+conn.execute('''CREATE TABLE IF NOT EXISTS users (
+    user_id TEXT PRIMARY KEY,
+    preferences TEXT DEFAULT '{"risk_level":"medium","favorites":[],"default_quantity":1,"trading_style":"swing"}',
+    memory_summary TEXT,
+    last_interaction TEXT
+)''')
 
-@app.get("/health")
-async def health():
-    return {"status": "healthy", "model": GROK_MODEL}
+conn.execute('''CREATE TABLE IF NOT EXISTS chat_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT,
+    role TEXT,
+    content TEXT,
+    timestamp TEXT
+)''')
 
-@app.get("/trigger-report")
-async def trigger_report():
-    await full_report()
-    return {"status": "✅ SUCCESS!"}
+def get_user_prefs(user_id):
+    row = conn.execute("SELECT preferences FROM users WHERE user_id=?", (user_id,)).fetchone()
+    if not row:
+        conn.execute("INSERT INTO users (user_id) VALUES (?)", (user_id,))
+        conn.commit()
+        return json.loads('{"risk_level":"medium","favorites":[],"default_quantity":1,"trading_style":"swing"}')
+    return json.loads(row[0])
 
-@app.get("/reset-db")
-async def reset_database():
-    try:
-        import os
-        if os.path.exists("bot_memory.db"):
-            os.remove("bot_memory.db")
-            await send_alert("🗑️ Database & all chat history cleared successfully. Bot restarted fresh.")
-            print("✅ Database deleted and will be recreated on next interaction")
-        else:
-            await send_alert("✅ Database was already clean.")
-        return {"status": "Database reset complete. Starting fresh."}
-    except Exception as e:
-        return {"status": f"Error: {str(e)}"}
+def set_user_pref(user_id, key, value):
+    prefs = get_user_prefs(user_id)
+    prefs[key] = value
+    conn.execute("UPDATE users SET preferences=?, last_interaction=? WHERE user_id=?", 
+                 (json.dumps(prefs), datetime.now().isoformat(), user_id))
+    conn.commit()
 
-# TradingView webhook
-@app.post("/tv-webhook")
-async def tv_webhook(request: Request):
-    data = await request.json()
-    await send_alert(f"📢 TradingView Alert: {data.get('message', 'New signal')}")
-    return {"status": "received"}
+def save_message(user_id, role, content):
+    conn.execute("INSERT INTO chat_history (user_id, role, content, timestamp) VALUES (?,?,?,?)",
+                 (user_id, role, content, datetime.now().isoformat()))
+    conn.commit()
 
-# Dhan Postback (real-time order updates)
-@app.post("/dhan-postback")
-async def dhan_postback(request: Request):
-    try:
-        data = await request.json()
-        print("📨 Dhan Postback Received:", json.dumps(data, indent=2))
-        
-        status = data.get("orderStatus", "")
-        symbol = data.get("tradingSymbol", "Unknown")
-        
-        if status in ["TRADED", "REJECTED", "CANCELLED", "PENDING"]:
-            message = f"📨 Dhan Order Update\nSymbol: {symbol}\nStatus: {status}\nDetails: {json.dumps(data, default=str)}"
-            await send_alert(message)
-        return {"status": "received"}
-    except Exception as e:
-        print("Dhan postback error:", str(e))
-        return {"status": "received"}
-
-# Telegram Webhook (Grok-like chat)
-@app.post("/telegram-webhook")
-async def telegram_webhook(request: Request):
-    try:
-        update = await request.json()
-        if "message" not in update or "text" not in update["message"]:
-            return {"status": "ok"}
-        
-        text = update["message"]["text"].strip().lower()
-        user_id = str(update["message"]["from"]["id"])
-        
-        save_message(user_id, "user", text)
-        prefs = get_user_prefs(user_id)
-
-        # Special Dhan commands
-        if text in ["/portfolio", "portfolio", "holdings", "positions"]:
-            data = get_dhan_portfolio()
-            await send_alert(f"📊 **Live Dhan Portfolio & Positions:**\n{data}")
-            return {"status": "ok"}
-
-        if text in ["/tradehistory", "trade history", "orders", "history"]:
-            data = get_trade_history()
-            await send_alert(f"📜 **Dhan Trade / Order History:**\n{data}")
-            return {"status": "ok"}
-
-        if text.startswith("/quote"):
-            symbol = text.split()[-1].upper() if len(text.split()) > 1 else "RELIANCE"
-            data = get_dhan_live_quote(symbol)
-            await send_alert(f"📈 Live Quote for {symbol}:\n{data}")
-            return {"status": "ok"}
-
-        # Auto preference
-        if "risk" in text:
-            risk = "low" if "low" in text else "high" if "high" in text else "medium"
-            set_user_pref(user_id, "risk_level", risk)
-            await send_alert(f"✅ Risk level updated to **{risk}**")
-            return {"status": "ok"}
-
-        # Normal Grok chat with live Dhan data
-        dhan_data = get_dhan_portfolio()
-        history = get_user_history(user_id)
-        system = f"You are Grok. You have full real-time access to the user's Dhan account. Current portfolio: {dhan_data}. User preferences: {json.dumps(prefs)}. Be helpful, trading-focused, and fun."
-        reply = await call_grok(f"{system}\n\n{text}")
-        save_message(user_id, "assistant", reply)
-        await send_alert(reply)
-        return {"status": "ok"}
-
-    except Exception as e:
-        print("Webhook error:", str(e))
-        return {"status": "ok"}
-
-async def call_grok(prompt: str):
-    response = client.chat.completions.create(
-        model=GROK_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.7
-    )
-    return response.choices[0].message.content
-
-async def full_report():
-    dhan_data = get_dhan_portfolio()
-    prompt = f"Full analysis at {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%Y-%m-%d %H:%M IST')}. Use live Dhan data: {dhan_data}. Include all sections with precise recommendations + long Educator lesson."
-    report = await call_grok(prompt)
-    await send_report(report)
-
-async def sunday_self_review():
-    review = await call_grok("Sunday self-review")
-    await send_report(f"📅 SUNDAY SELF-REVIEW\n\n{review}")
-
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.getenv("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+def get_user_history(user_id, limit=20):
+    rows = conn.execute("SELECT role, content FROM chat_history WHERE user_id=? ORDER BY id DESC LIMIT ?", 
+                        (user_id, limit)).fetchall()
+    return [{"role": r[0], "content": r[1]} for r in reversed(rows)]
