@@ -47,9 +47,9 @@ async def health():
 @app.get("/trigger-report")
 async def trigger_report():
     try:
-        print("🚀 /trigger-report called - starting full_report")
+        print("🚀 /trigger-report called")
         await full_report()
-        print("✅ full_report completed successfully")
+        print("✅ full_report completed")
         return {"status": "✅ SUCCESS!"}
     except Exception as e:
         print(f"❌ /trigger-report failed: {traceback.format_exc()}")
@@ -107,7 +107,7 @@ When you need data, output ONLY a JSON object like this:
 or
 {{"tool": "get_dhan_live_quote", "symbol": "RELIANCE"}}
 
-After receiving the tool result, ALWAYS give a full, detailed, intelligent final answer."""
+After you receive the tool result, ALWAYS give a full, detailed, intelligent final answer."""
 
         reply = await call_grok(f"{system}\n\nUser: {text}")
         save_message(user_id, "assistant", reply)
@@ -122,17 +122,36 @@ async def call_grok(prompt: str):
     if client is None:
         return "❌ xAI SDK not initialized."
     try:
-        print("📤 Calling Grok with prompt length:", len(prompt))
+        print("📤 Calling Grok...")
         chat = client.chat.create(model=GROK_MODEL)
         chat.append(user(prompt))
 
-        response = chat.complete()   # ← Simple, reliable complete call
-        final_content = getattr(response, 'content', str(response))
+        final_content = "**No response from model**"
 
-        print("📥 Grok returned content, length:", len(final_content))
-        print("📥 First 300 chars:", repr(final_content[:300]))
+        for item in chat.stream():
+            # Safe handling for tuple or single object
+            if isinstance(item, tuple) and len(item) > 0:
+                response = item[0]
+            else:
+                response = item
 
-        return final_content if final_content else "**Empty response from Grok**"
+            if hasattr(response, 'tool_calls') and response.tool_calls:
+                for tool_call in response.tool_calls:
+                    func_name = tool_call.function.name
+                    try:
+                        args = json.loads(tool_call.function.arguments) if tool_call.function.arguments else {}
+                        result = tool_map[func_name](**args) if args else tool_map[func_name]()
+                        print(f"🔧 Tool executed: {func_name}")
+                        chat.append(tool_result(str(result)))
+                    except Exception as e:
+                        print(f"🔧 Tool error {func_name}: {e}")
+                        chat.append(tool_result(f"Tool error: {str(e)}"))
+            else:
+                final_content = getattr(response, 'content', str(response))
+                print("📥 Received final content, length:", len(final_content))
+                break
+
+        return final_content if final_content.strip() else "**Empty response from Grok**"
     except Exception as e:
         print(f"❌ call_grok failed: {traceback.format_exc()}")
         return f"❌ Grok API error: {str(e)}"
