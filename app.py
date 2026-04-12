@@ -4,6 +4,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import asyncio, json, os, io
 from datetime import datetime
 import pytz
+from xai_dfk import xai_sdk
 from openai import OpenAI
 import matplotlib
 matplotlib.use('Agg')
@@ -24,11 +25,11 @@ tool_map = {
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
-    scheduler.add_job(full_report, 'cron', hour=2, minute=30)   # 8 AM IST
-    scheduler.add_job(full_report, 'cron', hour=12, minute=30)  # 6 PM IST
+    scheduler.add_job(full_report, 'cron', hour=2, minute=30)
+    scheduler.add_job(full_report, 'cron', hour=12, minute=30)
     scheduler.add_job(sunday_self_review, 'cron', day_of_week='sun', hour=10, minute=0)
     scheduler.start()
-    print(f"🚀 GROK 4.20 MULTI-AGENT + REAL TOOLS LIVE → Using {GROK_MODEL}")
+    print(f"🚀 GROK 4.20 MULTI-AGENT + OFFICIAL RESPONSES API LIVE → Using {GROK_MODEL}")
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -103,7 +104,7 @@ async def telegram_webhook(request: Request):
             await send_alert(f"📈 Live Quote for {symbol}:\n{data}")
             return {"status": "ok"}
 
-        # Multi-Agent + Real Tool Orchestration (prompt-based)
+        # Official Responses API + Multi-Agent Tool Orchestration
         dhan_data = get_dhan_portfolio()
         system = f"""You are Grok 4.20 Multi-Agent — the most powerful truth-seeking model.
 You have full real-time access to the user's Dhan account. Current portfolio: {dhan_data}.
@@ -129,15 +130,15 @@ async def call_grok(prompt: str):
     messages = [{"role": "user", "content": prompt}]
     
     for _ in range(6):  # Max tool rounds
-        response = client.chat.completions.create(
+        response = client.responses.create(          # ← Official Responses API
             model=GROK_MODEL,
-            messages=messages,
+            input=messages,
             temperature=0.7
         )
-        content = response.choices[0].message.content
+        content = response.output[-1].content if hasattr(response.output[-1], 'content') else str(response.output[-1])
         messages.append({"role": "assistant", "content": content})
 
-        # Detect tool call
+        # Detect tool call (JSON from model)
         if "{" in content and "tool" in content.lower():
             try:
                 start = content.find("{")
