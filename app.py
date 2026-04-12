@@ -33,7 +33,7 @@ tool_map = {
 async def lifespan(app: FastAPI):
     scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
     scheduler.add_job(full_report, 'cron', hour=9, minute=30)
-    scheduler.add_job(full_report, 'cron', hour=3, minute=15)
+    scheduler.add_job(full_report, 'cron', hour=15, minute=15)
     scheduler.add_job(sunday_self_review, 'cron', day_of_week='sun', hour=10, minute=0)
     scheduler.start()
     print(f"🚀 FINAL BULLETPROOF GROK 4.20 MULTI-AGENT SYSTEM LIVE → Using {GROK_MODEL}")
