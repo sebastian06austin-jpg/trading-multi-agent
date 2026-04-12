@@ -1,8 +1,13 @@
 import sqlite3
 import json
 from datetime import datetime
+import os
 
-conn = sqlite3.connect('bot_memory.db', check_same_thread=False)
+# Use /tmp folder which is writable on Render free tier
+DB_PATH = "/tmp/bot_memory.db"
+
+conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+
 conn.execute('''CREATE TABLE IF NOT EXISTS users (
     user_id TEXT PRIMARY KEY,
     preferences TEXT DEFAULT '{"risk_level":"medium","favorites":[],"default_quantity":1,"trading_style":"swing"}',
