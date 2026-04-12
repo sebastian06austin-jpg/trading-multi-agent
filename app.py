@@ -13,7 +13,6 @@ from telegram_sender import send_report, send_alert, send_chart_image
 from database import get_user_prefs, set_user_pref, save_message, get_user_history
 from dhan_tools import get_dhan_live_quote, get_dhan_portfolio, get_trade_history
 
-# ====================== INITIALIZATION ======================
 client = None
 try:
     client = Client(api_key=os.getenv("XAI_API_KEY"))
@@ -36,7 +35,7 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(full_report, 'cron', hour=12, minute=30)
     scheduler.add_job(sunday_self_review, 'cron', day_of_week='sun', hour=10, minute=0)
     scheduler.start()
-    print(f"🚀 BULLETPROOF GROK 4.20 MULTI-AGENT SYSTEM LIVE → Using {GROK_MODEL}")
+    print(f"🚀 FINAL BULLETPROOF GROK 4.20 MULTI-AGENT SYSTEM LIVE → Using {GROK_MODEL}")
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -48,9 +47,9 @@ async def health():
 @app.get("/trigger-report")
 async def trigger_report():
     try:
-        print("🚀 /trigger-report called")
+        print("🚀 /trigger-report called - starting full_report")
         await full_report()
-        print("✅ full_report completed")
+        print("✅ full_report completed successfully")
         return {"status": "✅ SUCCESS!"}
     except Exception as e:
         print(f"❌ /trigger-report failed: {traceback.format_exc()}")
@@ -108,7 +107,7 @@ When you need data, output ONLY a JSON object like this:
 or
 {{"tool": "get_dhan_live_quote", "symbol": "RELIANCE"}}
 
-After you receive the tool result, give your final intelligent answer."""
+After receiving the tool result, ALWAYS give a full, detailed, intelligent final answer."""
 
         reply = await call_grok(f"{system}\n\nUser: {text}")
         save_message(user_id, "assistant", reply)
@@ -127,36 +126,13 @@ async def call_grok(prompt: str):
         chat = client.chat.create(model=GROK_MODEL)
         chat.append(user(prompt))
 
-        final_content = "**No response from model**"
+        response = chat.complete()   # ← Simple, reliable complete call
+        final_content = getattr(response, 'content', str(response))
 
-        for item in chat.stream():
-            # Safe handling for tuple or single object
-            if isinstance(item, tuple):
-                response = item[0] if len(item) > 0 else item
-            else:
-                response = item
+        print("📥 Grok returned content, length:", len(final_content))
+        print("📥 First 300 chars:", repr(final_content[:300]))
 
-            # Tool call handling
-            if hasattr(response, 'tool_calls') and response.tool_calls:
-                for tool_call in response.tool_calls:
-                    func_name = tool_call.function.name
-                    try:
-                        args = json.loads(tool_call.function.arguments) if tool_call.function.arguments else {}
-                        result = tool_map[func_name](**args) if args else tool_map[func_name]()
-                        print(f"🔧 Tool executed: {func_name}")
-                        chat.append(tool_result(str(result)))
-                    except Exception as e:
-                        print(f"🔧 Tool error {func_name}: {e}")
-                        chat.append(tool_result(f"Tool error: {str(e)}"))
-            else:
-                # Final answer - safe content extraction
-                final_content = getattr(response, 'content', None)
-                if final_content is None:
-                    final_content = str(response)
-                print("📥 Received final content from Grok, length:", len(final_content))
-                break
-
-        return final_content
+        return final_content if final_content else "**Empty response from Grok**"
     except Exception as e:
         print(f"❌ call_grok failed: {traceback.format_exc()}")
         return f"❌ Grok API error: {str(e)}"
@@ -169,7 +145,7 @@ async def full_report():
         report = await call_grok(prompt)
         print("📤 Report generated, length:", len(report))
         await send_report(report)
-        print("✅ Report sent to Telegram successfully")
+        print("✅ Report sent to Telegram")
     except Exception as e:
         print(f"❌ full_report failed: {traceback.format_exc()}")
         await send_alert(f"❌ Report generation failed: {str(e)}")
