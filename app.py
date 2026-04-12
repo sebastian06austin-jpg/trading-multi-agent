@@ -4,7 +4,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import asyncio, json, os, io
 from datetime import datetime
 import pytz
-from xai_dfk import xai_sdk
+from xai_sdk import xai_sdk
 from openai import OpenAI
 import matplotlib
 matplotlib.use('Agg')
