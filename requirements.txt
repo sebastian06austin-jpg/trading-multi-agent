@@ -1,4 +1,6 @@
 xai-sdk
+dhan-sdk
+pydantic
 llvmlite
 numba
 fastapi
