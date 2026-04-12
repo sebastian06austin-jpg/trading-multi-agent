@@ -36,6 +36,20 @@ async def trigger_report():
     await full_report()
     return {"status": "✅ SUCCESS!"}
 
+@app.get("/reset-db")
+async def reset_database():
+    try:
+        import os
+        if os.path.exists("bot_memory.db"):
+            os.remove("bot_memory.db")
+            await send_alert("🗑️ Database & all chat history cleared successfully. Bot restarted fresh.")
+            print("✅ Database deleted and will be recreated on next interaction")
+        else:
+            await send_alert("✅ Database was already clean.")
+        return {"status": "Database reset complete. Starting fresh."}
+    except Exception as e:
+        return {"status": f"Error: {str(e)}"}
+
 # TradingView webhook
 @app.post("/tv-webhook")
 async def tv_webhook(request: Request):
@@ -76,20 +90,15 @@ async def telegram_webhook(request: Request):
         prefs = get_user_prefs(user_id)
 
         # Special Dhan commands
+
         if text == "/portfolio" or "portfolio" in text or "holdings" in text or "positions" in text:
             data = get_dhan_portfolio()
-            if "HOLDING_ERROR" in data or "No holdings available" in data:
-                await send_alert("⚠️ Dhan returned HOLDING_ERROR (DH-1111).\nThis usually means the Access Token is in Sandbox mode or needs regeneration.\n\nPlease regenerate your token in **Live mode** and update env vars.")
-            else:
-                await send_alert(f"📊 **Your Live Dhan Portfolio & Positions:**\n{data}")
+            await send_alert(f"📊 **Raw Dhan Response (Portfolio):** \n{data}")
             return {"status": "ok"}
 
         if text == "/tradehistory" or "trade history" in text or "orders" in text or "history" in text:
             data = get_trade_history()
-            if "Error" in data:
-                await send_alert(f"📜 **Trade History:**\n{data}\n\nIf empty, regenerate token in Live mode.")
-            else:
-                await send_alert(f"📜 **Your Dhan Trade / Order History:**\n{data}")
+            await send_alert(f"📜 **Raw Dhan Response (Trade History):** \n{data}")
             return {"status": "ok"}
 
         if text.startswith("/quote"):
