@@ -160,19 +160,26 @@ async def call_grok(prompt: str, model: str):
         return f"❌ Grok error: {str(e)}"
 
 async def full_report():
-    try:
-        print("📊 [full_report] Starting (using grok-beta for scalability)")
-        prompt = f"Full global analysis at {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%Y-%m-%d %H:%M IST')}. Include Stocks, Commodities, ETFs, Crypto, Forex, Futures with precise recommendations + long Educator lesson + TradingView links. Enforce 1% risk rule."
-        report = await call_grok(prompt, GROK_BETA_MODEL)
-        await send_report(report)
-        print("✅ Report sent to public channel")
-    except Exception as e:
-        print(f"❌ full_report failed: {traceback.format_exc()}")
-        await send_alert(f"❌ Report failed: {str(e)}")
+    """Daily market report (used by scheduler + /trigger-report)"""
+    prompt = (
+        f"Full global market analysis at {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%Y-%m-%d %H:%M IST')}. "
+        "Include: Major indices, key stocks (Nifty, BankNifty, HDFCBANK, RELIANCE, etc.), global cues, "
+        "precise trade ideas with entry/SL/target/position size (1-2% risk rule), and a short Educator lesson. "
+        "Keep it structured and actionable."
+    )
+    report = await call_grok(prompt, GROK_BASIC_MODEL)
+    await send_report(report)
 
 async def sunday_self_review():
-    review = await call_grok("Sunday self-review of last week signals, lessons, improvements, and portfolio performance with strict risk rule adherence.", GROK_BETA_MODEL)
-    await send_report(f"📅 SUNDAY SELF-REVIEW\n\n{review}")
+    """Sunday self-review (runs every Sunday at 10:00 AM IST)"""
+    prompt = (
+        "Sunday self-review of the past week: What worked, what didn't, key lessons, "
+        "portfolio performance summary, risk rule adherence, and 3 actionable improvements for next week. "
+        "Be honest and constructive."
+    )
+    review = await call_grok(prompt, GROK_BASIC_MODEL)
+    await send_report(f"📅 **SUNDAY SELF-REVIEW**\n\n{review}")
+    
 
 if __name__ == "__main__":
     import uvicorn
